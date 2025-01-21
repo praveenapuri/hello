@@ -1,0 +1,63 @@
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_iam_role" "datasync_role" {
+  name = "datasync-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "datasync.amazonaws.com"
+        },
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "datasync_policy" {
+  name        = "datasync-policy"
+  description = "Policy for DataSync to access FSx and EFS"
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Action = [
+          "fsx:DescribeFileSystems",
+          "fsx:ListTagsForResource",
+          "elasticfilesystem:DescribeFileSystems",
+          "elasticfilesystem:DescribeMountTargets",
+          "elasticfilesystem:DescribeTags"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientWrite"
+        ],
+        Resource = "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-87654321"
+      },
+      {
+        Effect = "Allow",
+        Action = [
+          "fsx:ClientMount",
+          "fsx:ClientWrite"
+        ],
+        Resource = "arn:aws:fsx:us-east-1:123456789012:file-system/fs-12345678"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "datasync_policy_attachment" {
+  role       = aws_iam_role.datasync_role.name
+  policy_arn = aws_iam_policy.datasync_policy.arn
+}
