@@ -1,0 +1,38 @@
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_datasync_agent" "example" {
+  activation_key = "YOUR_ACTIVATION_KEY"
+}
+
+resource "aws_datasync_location_fsx_windows_file_system" "source" {
+  fsx_filesystem_arn = "arn:aws:fsx:us-east-1:123456789012:file-system/fs-12345678"
+  user               = "fsx_user"
+  password           = "fsx_password"
+  domain             = "fsx_domain"
+}
+
+resource "aws_datasync_location_efs" "destination" {
+  efs_file_system_arn = "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-87654321"
+  ec2_config {
+    security_group_arns = ["arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678"]
+    subnet_arn          = "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-12345678"
+  }
+}
+
+resource "aws_datasync_task" "example" {
+  source_location_arn      = aws_datasync_location_fsx_windows_file_system.source.arn
+  destination_location_arn = aws_datasync_location_efs.destination.arn
+
+  options {
+    verify_mode     = "POINT_IN_TIME_CONSISTENT"
+    overwrite_mode  = "ALWAYS"
+    atime           = "BEST_EFFORT"
+    mtime           = "PRESERVE"
+    uid             = "INT_VALUE"
+    gid             = "INT_VALUE"
+    preserve_deleted_files = "PRESERVE"
+    preserve_devices       = "NONE"
+  }
+}
