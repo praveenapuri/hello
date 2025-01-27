@@ -2,19 +2,27 @@ provider "aws" {
   region = "us-east-1"
 }
 
+resource "aws_directory_service_directory" "example" {
+  name     = "corp.example.com"
+  password = "SuperSecretPassword"
+  size     = "Small"
+  vpc_settings {
+    vpc_id     = "vpc-12345678"
+    subnet_ids = ["subnet-12345678", "subnet-87654321"]
+  }
+}
+
 resource "aws_fsx_windows_file_system" "example" {
   storage_capacity    = 300
-  subnet_ids          = ["subnet-12345678"]
-  security_group_ids  = ["sg-12345678"]
+  subnet_ids          = ["subnet-12345678", "subnet-87654321"]
+  security_group_ids  = [aws_security_group.fsx_sg.id]
   throughput_capacity = 32
   weekly_maintenance_start_time = "1:05:00"
 
-  self_managed_active_directory {
-    dns_ips     = ["10.0.0.1", "10.0.0.2"]
-    domain_name = "corp.example.com"
-    password    = "SuperSecretPassword"
-    username    = "Admin"
-  }
+  active_directory_id = aws_directory_service_directory.example.id
+
+  deployment_type = "MULTI_AZ_1"
+  preferred_subnet_id = "subnet-12345678"
 }
 
 resource "aws_security_group" "fsx_sg" {
