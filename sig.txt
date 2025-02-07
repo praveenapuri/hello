@@ -1,0 +1,40 @@
+To capture signatures in a PDF as part of a Power workflow, you can use Microsoft Power Automate along with tools that support digital signatures or signature fields in PDFs. Here’s a general outline of the steps you can take:
+
+Step 1: Create or Use a Preexisting Power Automate Flow
+First, create or modify an existing flow in Microsoft Power Automate (formerly Microsoft Flow) that integrates with your PDF files and signature process.
+
+Step 2: Use a PDF Signature Tool
+Power Automate doesn’t directly provide a signature capture tool, but you can integrate with other services that allow digital signatures.
+
+Adobe Sign Integration:
+Adobe Sign can be integrated with Power Automate to automatically send documents for signature.
+You can create a flow to trigger Adobe Sign when the document reaches a certain stage. For example, when a document is uploaded to a SharePoint folder, Power Automate can send it through Adobe Sign for signature and return the signed document.
+DocuSign Integration:
+Similar to Adobe Sign, DocuSign can be connected to Power Automate to collect signatures. The DocuSign connector allows you to send documents for signing, capture signatures, and store the signed documents.
+Electronic Signature Fields:
+For more custom solutions, you could use platforms like SignNow or HelloSign, which also integrate with Power Automate.
+Step 3: Define Signature Field in the PDF
+When you send a PDF document for signature, you need to define where the signature field will appear. In Adobe Sign, DocuSign, or other platforms, you can drag and drop signature fields, initials, and other form fields into your document before sending it for signing.
+
+Adobe Sign:
+You can upload the document, then map out the signature field for each signer.
+DocuSign:
+Define the position of signature fields directly within the PDF during the setup process.
+Step 4: Automate the Workflow in Power Automate
+Create a flow to handle the automatic sending, signing, and collection of signed PDFs. The steps generally involve:
+
+Trigger Event: Start the flow, for instance, when a document is uploaded to a folder (e.g., SharePoint or OneDrive).
+Send for Signature: Use the Adobe Sign or DocuSign connector to send the document for signature.
+Capture the Signed Document: Once the document is signed, capture the signed version and store it in a location (e.g., SharePoint, OneDrive).
+Notification: Optionally, send a notification or email that the document has been signed.
+Step 5: Handle the Signed PDF
+Once the document is signed, you can automate steps to:
+
+Save it to SharePoint or another storage location.
+Notify the user or workflow participants that the document is signed and complete.
+Example Flow in Power Automate
+Trigger: A new file is added to a SharePoint library or folder.
+Action: Use Adobe Sign or DocuSign to send the document for signature.
+Wait for Signature: The flow pauses and waits until the document is signed.
+Save Signed PDF: Once signed, the signed document is stored back into SharePoint or another designated file location.
+Notification: An email is sent to relevant stakeholders indicating the document has been signed.
