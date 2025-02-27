@@ -1,18 +1,36 @@
-resource "aws_cloudwatch_event_rule" "cron_schedule" {
-  name                = "cron_schedule"
-  schedule_expression = "cron(0 12-23/3 ? * MON-FRI *)"
-}
+To assign an IAM role to an Active Directory (AD) group in AWS, follow these steps:
 
-resource "aws_cloudwatch_event_target" "lambda_target" {
-  rule      = aws_cloudwatch_event_rule.cron_schedule.name
-  target_id = "lambda_target"
-  arn       = aws_lambda_function.example.arn
-}
+Create or Identify the IAM Role:
 
-resource "aws_lambda_permission" "allow_cloudwatch" {
-  statement_id  = "AllowExecutionFromCloudWatch"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.example.function_name
-  principal     = "events.amazonaws.com"
-  source_arn    = aws_cloudwatch_event_rule.cron_schedule.arn
+Ensure you have an IAM role created with the necessary permissions. If not, create a new IAM role and attach the required policies.
+Edit the Trust Relationship:
+
+Go to the IAM console and select the role you want to assign.
+
+Under the "Trust relationships" tab, click "Edit trust relationship."
+
+Modify the trust policy to include the AD group. The trust policy should allow the AD group to assume the role. Here is an example of a trust policy:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::<account-id>:role/<role-name>"
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:PrincipalTag/ADGroup": "<AD-group-name>"
+        }
+      }
+    }
+  ]
 }
+Assign the Role to the AD Group:
+
+Use AWS IAM Identity Center (formerly AWS Single Sign-On) to map the AD group to the IAM role. This can be done through the IAM Identity Center console by selecting the AD group and assigning the IAM role to it12.
+Verify the Assignment:
+
+Ensure that the users in the AD group can assume the IAM role and access the AWS resources as defined by the role's policies.
