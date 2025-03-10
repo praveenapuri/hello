@@ -1,26 +1,23 @@
 resource "aws_ssm_document" "batch_script" {
-  name          = "RunBatchScript"
-  document_type = "Command"
+  name           = "RunBatchScript"
+  document_type  = "Command"
   document_format = "JSON"
-  content = <<EOF
-  {
-    "schemaVersion": "2.2",
-    "description": "Run a batch script",
-    "mainSteps": [
-      {
-        "action": "aws:runCommand",
-        "name": "runBatchScript",
-        "inputs": {
-          "DocumentName": "MemberExtract_TargetList_Generation",
-          "Parameters": {
-            "commands": [
-              "echo running batch command",
-              "SQLCMD  -Q "exec msdb.dbo.sp_start_job @job_name = 'MemberExtract_TargetList_Generation'""
-            ]
-          }
-        }
+  content        = <<EOF
+{
+  "schemaVersion": "2.2",
+  "description": "Run a batch script",
+  "mainSteps": [
+    {
+      "action": "aws:runShellScript",
+      "name": "runBatchScript",
+      "inputs": {
+        "runCommand": [
+          "echo running batch command",
+          "SQLCMD -Q \"exec msdb.dbo.sp_start_job @job_name = 'MemberExtract_TargetList_Generation'\""
+        ]
       }
-    ]
-  }
-  EOF
+    }
+  ]
+}
+EOF
 }
