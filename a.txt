@@ -1,1 +1,12 @@
-terragrunt import aws_route53_record.dns_record["eppeds0az2.epic-prod.aws.cignacloud.com"] Z013145926EO2NG6CJEEU_eppeds0az2.epic-prod.aws.cignacloud.com_A
+output "route53_records" {
+  value = [
+    for record in local.aws_route53_records : {
+      zone_id = record.zone_id
+      name    = record.name
+      type    = record.type
+      ttl     = record.ttl
+      record = length(record.records) == 0 ? null : record.records
+      alias = length(record.alias) == 0 ? null : record.alias[0].name
+    }
+  ]
+}
