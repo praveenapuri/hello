@@ -1,1 +1,58 @@
-aws acm request-certificate --domain-name example.com --certificate-authority-arn arn:aws:acm:region:account-id:certificate-authority/ca-id --csr file://mycsr.csr
+provider "aws" {
+  region = "us-east-1"
+}
+
+locals {
+  dns_records = {
+    "example1.com" = {
+      type    = "A"
+      primary = "PRIMARY_IP_ADDRESS_1"
+      dr      = "DR_IP_ADDRESS_1"
+    },
+    "example2.com" = {
+      type    = "A"
+      primary = "PRIMARY_IP_ADDRESS_2"
+      dr      = "DR_IP_ADDRESS_2"
+    },
+    "www.example1.com" = {
+      type    = "CNAME"
+      primary = "primary1.example.com"
+      dr      = "dr1.example.com"
+    },
+    "www.example2.com" = {
+      type    = "CNAME"
+      primary = "primary2.example.com"
+      dr      = "dr2.example.com"
+    }
+  }
+}
+
+resource "aws_route53_record" "primary" {
+  for_each = local.dns_records
+  zone_id  = "Z1234567890"
+  name     = each.key
+  type     = each.value.type
+  ttl      = "300"
+  records  = [each.value.primary]
+}
+
+resource "aws_route53_record" "dr" {
+  for_each = local.dns_records
+  zone_id  = "Z1234567890"
+  name     = each.key
+  type     = each.value.type
+  ttl      = "300"
+  records  = [each.value.dr]
+}
+
+resource "aws_route53_record" "switch_to_dr" {
+  for_each = local.dns_records
+  zone_id  = "Z1234567890"
+  name     = each.key
+  type     = each.value.type
+  ttl      = "300"
+  records  = [each.value.dr]
+  lifecycle {
+    create_before_destroy = true
+  }
+}
