@@ -5,8 +5,8 @@ output "route53_records" {
       name    = record.name
       type    = record.type
       ttl     = record.ttl
-      record = length(record.records) == 0 ? null : record.records
-      alias = length(record.alias) == 0 ? null : record.alias[0].name
+      record  = length(record.records) == 0 ? null : record.records
+      alias   = contains(keys(record), "alias") && length(record.alias) > 0 ? record.alias[0].name : null
     }
   ]
 }
