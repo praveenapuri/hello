@@ -1,12 +1,15 @@
-output "route53_records" {
-  value = [
-    for record in local.aws_route53_records : {
-      zone_id = record.zone_id
-      name    = record.name
-      type    = record.type
-      ttl     = record.ttl
-      record  = length(record.records) == 0 ? null : record.records
-      alias   = contains(keys(record), "alias") && length(record.alias) > 0 ? record.alias[0].name : null
-    }
-  ]
-}
+Balancing IP usage among subnets in AWS involves several strategies to ensure efficient distribution and avoid exhaustion of IP addresses. Here are some key practices:
+
+Plan Subnet Sizes Appropriately: When creating subnets, allocate IP address ranges that can accommodate current and future needs. Ensure that subnets are large enough to handle the expected number of resources 1.
+
+Monitor IP Address Usage: Regularly monitor the IP address usage in your subnets using tools like AWS VPC IP Address Manager (IPAM). This helps you identify subnets that are nearing capacity 2.
+
+Distribute Resources Across Subnets: Spread your resources (such as EC2 instances, load balancers, etc.) across multiple subnets to avoid overloading a single subnet 1.
+
+Use Multiple Availability Zones: Deploy resources across multiple Availability Zones to enhance redundancy and balance IP usage. This also helps in achieving high availability 3.
+
+Enable Cross-Zone Load Balancing: Utilize cross-zone load balancing to distribute traffic evenly across subnets in different Availability Zones 3.
+
+Delete Unused Resources: Periodically review and delete unused resources like elastic network interfaces and IP addresses to free up space 2.
+
+Add New Subnets: If a subnet is running out of IP addresses, consider adding new subnets to your VPC. Ensure that the new subnets have similar routing and network ACL rules as the existing ones 1.
