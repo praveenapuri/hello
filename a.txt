@@ -27,3 +27,13 @@ resource "aws_route53_record" "dns_entry" {
   ttl     = 300
   records = [each.value]
 }
+
+
+variable "dns_entries" {
+  description = "DNS records for each environment"
+  type        = map(string)
+  default = {
+    "prod" = "app.example.com"
+    "dr"   = "dr-app.example.com"
+  }
+}
