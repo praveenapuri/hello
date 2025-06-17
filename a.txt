@@ -98,8 +98,13 @@ resource "aws_route53_record" "dns_entry" {
     { "name": "epphswaz4.epic-prod.aws.cignacloud.com", "record": "10.189.202.238", "environment": "prod" },
     { "name": "epphswrel1.epic-prod.aws.cignacloud.com", "record": "10.189.202.179", "environment": "prod" },
     { "name": "epphswrel2.epic-prod.aws.cignacloud.com", "record": "10.189.202.201", "environment": "prod" },
+    { "name": "eppic0az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.156", "environment": "prod" },
+    { "name": "eppic0az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.235", "environment": "prod" },
+    { "name": "eppic1az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.187", "environment": "prod" },
+    { "name": "eppic1az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.225", "environment": "prod" },
+    { "name": "eppic2az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.172", "environment": "prod" },
+    { "name": "eppic2az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.245", "environment": "prod" },
     { "name": "smtp.epic-prod.aws.cignacloud.com", "record": "10.189.202.246", "environment": "prod" },
     { "name": "systempulse.epic-prod.aws.cignacloud.com", "record": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com", "environment": "prod" }
   ]
 }
-
