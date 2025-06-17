@@ -1,175 +1,43 @@
 {
-  "prod_cname_dns_entries" : [
-    {
-      "description": "Type CNAME DNS records for PROD environment"
-    },
-    {
-      "name" : "internal-alb.epic-prod.aws.cignacloud.com",
-      "record" : "internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com"
-    },
-    {
-      "name" : "eppprododb.epic-prod.aws.cignacloud.com",
-      "record" : "eppprododbaz4.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppprd.epic-prod.aws.cignacloud.com"   : "eppprododbaz4.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppsup.epic-prod.aws.cignacloud.com" : "eppsupodbaz1b.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "epprel.epic-prod.aws.cignacloud.com" : "eppsupodbaz1b.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "epphsw1.epic-prod.aws.cignacloud.com" : "epphsw1az1.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "epphsw2.epic-prod.aws.cignacloud.com" : "epphsw2az2.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppkuiper1.epic-prod.aws.cignacloud.com" : "eppkuiper1az1.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppeps1.epic-prod.aws.cignacloud.com" : "eppeps1az1.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppeps2.epic-prod.aws.cignacloud.com" : "eppeps1az2.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppwbs1.epic-prod.aws.cignacloud.com" : "eppwbs1az1.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "eppwbs2.epic-prod.aws.cignacloud.com" : "eppwbs2az2.epic-prod.aws.cignacloud.com"
-    },
-    {
-      "systempulse-endpoint-target.epic-prod.aws.cignacloud.com" : "internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com"
-    }
+  "prod_cname_dns_entries": [
+    { "name": "internal-alb.epic-prod.aws.cignacloud.com", "record": "internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com" },
+    { "name": "eppprododb.epic-prod.aws.cignacloud.com", "record": "eppprododbaz4.epic-prod.aws.cignacloud.com" },
+    { "name": "eppprd.epic-prod.aws.cignacloud.com", "record": "eppprododbaz4.epic-prod.aws.cignacloud.com" },
+    { "name": "eppsup.epic-prod.aws.cignacloud.com", "record": "eppsupodbaz1b.epic-prod.aws.cignacloud.com" },
+    { "name": "epprel.epic-prod.aws.cignacloud.com", "record": "eppsupodbaz1b.epic-prod.aws.cignacloud.com" },
+    { "name": "epphsw1.epic-prod.aws.cignacloud.com", "record": "epphsw1az1.epic-prod.aws.cignacloud.com" },
+    { "name": "epphsw2.epic-prod.aws.cignacloud.com", "record": "epphsw2az2.epic-prod.aws.cignacloud.com" },
+    { "name": "eppkuiper1.epic-prod.aws.cignacloud.com", "record": "eppkuiper1az1.epic-prod.aws.cignacloud.com" },
+    { "name": "eppeps1.epic-prod.aws.cignacloud.com", "record": "eppeps1az1.epic-prod.aws.cignacloud.com" },
+    { "name": "eppeps2.epic-prod.aws.cignacloud.com", "record": "eppeps1az2.epic-prod.aws.cignacloud.com" },
+    { "name": "eppwbs1.epic-prod.aws.cignacloud.com", "record": "eppwbs1az1.epic-prod.aws.cignacloud.com" },
+    { "name": "eppwbs2.epic-prod.aws.cignacloud.com", "record": "eppwbs2az2.epic-prod.aws.cignacloud.com" },
+    { "name": "systempulse-endpoint-target.epic-prod.aws.cignacloud.com", "record": "internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com" }
   ],
-
-  "prod_a_dns_entries" : [
-
-    {
-      "description" : "Type A DNS records for PROD environment"
-    },
-    {
-      "eppeds.epic-prod.aws.cignacloud.com" : "eppprod-nlb-4c1b2105ffe56d30.elb.us-east-1.amazonaws.com"
-    },
-    {
-      "eppeds0az2.epic-prod.aws.cignacloud.com"   : "10.189.202.152"
-    },
-    {
-      "eppeds0az4.epic-prod.aws.cignacloud.com"   : "10.189.202.214"
-    },
-    {
-      "eppeds1az2.epic-prod.aws.cignacloud.com" : "10.189.202.186"
-    },
-    {
-      "eppeds1az4.epic-prod.aws.cignacloud.com" : "10.189.202.252"
-    },
-    {
-      "eppeps1az1.epic-prod.aws.cignacloud.com" : "10.189.202.248"
-    },
-    {
-      "eppeps2az2.epic-prod.aws.cignacloud.com" : "10.189.202.177"
-    },
-    {
-      "eppfhir.epic-prod.aws.cignacloud.com" : "eppprodfhir-nlb-77341aaf4315afd1.elb.us-east-1.amazonaws.com"
-    },
-    {
-      "epphsw0az2.epic-prod.aws.cignacloud.com" : "10.189.202.132"
-    },
-    {
-      "epphsw1az1.epic-prod.aws.cignacloud.com" : "10.189.202.132"
-    },
-    {
-      "epphsw2az2.epic-prod.aws.cignacloud.com" : "10.189.202.238"
-    },
-    {
-      "epphswaz4.epic-prod.aws.cignacloud.com" : "10.189.202.238"
-    },
-    {
-      "epphswrel1.epic-prod.aws.cignacloud.com" : "10.189.202.179"
-    },
-    {
-      "epphswrel2.epic-prod.aws.cignacloud.com" : "10.189.202.201"
-    },
-    {
-      "eppic0az2.epic-prod.aws.cignacloud.com" : "10.189.202.156"
-    },
-    {
-      "eppic0az4.epic-prod.aws.cignacloud.com" : "10.189.202.235"
-    },
-    {
-      "eppic1az2.epic-prod.aws.cignacloud.com" : "10.189.202.187"
-    },
-    {
-      "eppic1az4.epic-prod.aws.cignacloud.com" : "10.189.202.225"
-    },
-    {
-      "eppic2az2.epic-prod.aws.cignacloud.com" : "10.189.202.172"
-    },
-    {
-      "eppic2az4.epic-prod.aws.cignacloud.com" : "10.189.202.245"
-    },
-    {
-      "eppkuiper1az1.epic-prod.aws.cignacloud.com" : "10.189.202.148"
-    },
-    {
-      "eppkuiperaz2.epic-prod.aws.cignacloud.com" : "10.189.202.197"
-    },
-    {
-      "epppa0az4.epic-prod.aws.cignacloud.com" : "10.189.202.198"
-    },
-    {
-      "epppa1az4.epic-prod.aws.cignacloud.com" : "10.189.202.199"
-    },
-    {
-      "epppa2az4.epic-prod.aws.cignacloud.com" : "10.189.202.251"
-    },
-    {
-      "epppfaz2.epic-prod.aws.cignacloud.com" : "10.189.202.177"
-    },
-    {
-      "epppfaz4.epic-prod.aws.cignacloud.com" : "10.189.202.248"
-    },
-    {
-      "eppprdclc.epic-prod.aws.cignacloud.com" : "10.189.202.135"
-    },
-    {
-      "eppprodmpaz2.epic-prod.aws.cignacloud.com" : "10.189.202.139"
-    },
-    {
-      "eppprododbaz4.epic-prod.aws.cignacloud.com" : "10.189.202.206"
-    },
-    {
-      "epprelclc.epic-prod.aws.cignacloud.com" : "10.189.202.176"
-    },
-    {
-      "eppsupodbaz1b.epic-prod.aws.cignacloud.com" : "10.189.202.247"
-    },
-    {
-      "eppsystempulseaz4.epic-prod.aws.cignacloud.com" : "10.189.202.161"
-    },
-    {
-      "eppwbs0az2.epic-prod.aws.cignacloud.com" : "10.189.202.174"
-    },
-    {
-      "eppwbs0az4.epic-prod.aws.cignacloud.com" : "10.189.202.254"
-    },
-    {
-      "eppwbs1az1.epic-prod.aws.cignacloud.com" : "10.189.202.174"
-    },
-    {
-      "eppwbs2az2.epic-prod.aws.cignacloud.com" : "10.189.202.254"
-    },
-    {
-      "kuiper.epic-prod.aws.cignacloud.com" : "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com"
-    },
-    {
-      "smtp.epic-prod.aws.cignacloud.com" : "10.189.202.246"
-    },
-    {
-      "systempulse.epic-prod.aws.cignacloud.com" : "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com"
-    }
+  "prod_a_dns_entries": [
+    { "name": "eppeds.epic-prod.aws.cignacloud.com", "record": "eppprod-nlb-4c1b2105ffe56d30.elb.us-east-1.amazonaws.com" },
+    { "name": "eppeds0az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.152" },
+    { "name": "eppeds0az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.214" },
+    { "name": "eppeds1az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.186" },
+    { "name": "eppeds1az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.252" },
+    { "name": "eppeps1az1.epic-prod.aws.cignacloud.com", "record": "10.189.202.248" },
+    { "name": "eppeps2az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.177" },
+    { "name": "eppfhir.epic-prod.aws.cignacloud.com", "record": "eppprodfhir-nlb-77341aaf4315afd1.elb.us-east-1.amazonaws.com" },
+    { "name": "epphsw0az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.132" },
+    { "name": "epphsw1az1.epic-prod.aws.cignacloud.com", "record": "10.189.202.132" },
+    { "name": "epphsw2az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.238" },
+    { "name": "epphswaz4.epic-prod.aws.cignacloud.com", "record": "10.189.202.238" },
+    { "name": "epphswrel1.epic-prod.aws.cignacloud.com", "record": "10.189.202.179" },
+    { "name": "epphswrel2.epic-prod.aws.cignacloud.com", "record": "10.189.202.201" },
+    { "name": "eppic0az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.156" },
+    { "name": "eppic0az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.235" },
+    { "name": "eppic1az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.187" },
+    { "name": "eppic1az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.225" },
+    { "name": "eppic2az2.epic-prod.aws.cignacloud.com", "record": "10.189.202.172" },
+    { "name": "eppic2az4.epic-prod.aws.cignacloud.com", "record": "10.189.202.245" },
+    { "name": "eppkuiper1az1.epic-prod.aws.cignacloud.com", "record": "10.189.202.148" },
+    { "name": "eppkuiperaz2.epic-prod.aws.cignacloud.com", "record": "10.189.202.197" },
+    { "name": "smtp.epic-prod.aws.cignacloud.com", "record": "10.189.202.246" },
+    { "name": "systempulse.epic-prod.aws.cignacloud.com", "record": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com" }
   ]
 }
