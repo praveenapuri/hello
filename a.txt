@@ -1,20 +1,29 @@
-To add IPs to existing CIDR blocks in AWS, you can associate additional CIDR blocks with your VPC. Here are the steps:
+variable "environments" {
+  description = "List of environments"
+  type        = list(string)
+  default     = ["prod", "dr"]
+}
 
-Open the Amazon VPC Console:
+variable "dns_entries" {
+  description = "DNS records for each environment"
+  type        = map(string)
+  default = {
+    "prod" = "app.example.com"
+    "dr"   = "dr-app.example.com"
+  }
+}
 
-Go to the Amazon VPC console.
-Navigate to Your VPCs:
+data "aws_route53_zone" "example" {
+  name         = "example.com."
+  private_zone = false
+}
 
-In the navigation pane, select Your VPCs.
-Select the VPC:
+resource "aws_route53_record" "dns_entry" {
+  for_each = var.dns_entries
 
-Choose the VPC you want to modify and click on Actions, then select Edit CIDRs.
-Add a New CIDR Block:
-
-Click on Add new IPv4 CIDR or Add new IPv6 CIDR.
-For IPv4, you can either manually input the CIDR block or select one from an IPAM pool.
-For IPv6, you can provision a CIDR block from an IPAM pool and choose the netmask length.
-Save Changes:
-
-After entering the new CIDR block, click Save to apply the changes 1 2.
-Remember, you can add up to five IPv4 and five IPv6 CIDR blocks by default 2. If you need more detailed guidance, the AWS documentation provides comprehensive instructions.
+  zone_id = data.aws_route53_zone.example.zone_id
+  name    = each.value
+  type    = "CNAME"
+  ttl     = 300
+  records = [each.value]
+}
