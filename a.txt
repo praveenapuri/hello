@@ -1,3 +1,28 @@
+
+variable "dns_entries" {
+  description = "List of DNS entries"
+  type        = list(object({
+    environment = string
+    name        = string
+    record      = string
+  }))
+}
+
+locals {
+  dns_data = jsondecode(file("${path.module}/terraform.tfvars.json"))
+}
+
+resource "aws_route53_record" "dns_entry" {
+  for_each = { for entry in local.dns_data : entry.environment => entry }
+
+  zone_id = data.aws_route53_zone.example.zone_id
+  name    = each.value.name
+  type    = "CNAME"
+  ttl     = 300
+  records = [each.value.record]
+}
+
+
 {
   "prod_cname_dns_entries": [
     { "name": "internal-alb.epic-prod.aws.cignacloud.com", "record": "internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com" },
