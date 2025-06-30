@@ -1,60 +1,25 @@
-provider "aws" {
-  region = "us-east-1"
-}
+# -----------------------------------------------------------------------------
+# locals.tf
+# -----------------------------------------------------------------------------
+# This file processes the raw data from the JSON file into a format that
+# is easy to use in our resource definitions.
+# -----------------------------------------------------------------------------
 
-resource "aws_iam_role" "lambda_role" {
-  name = "lambda_execution_role"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Action = "sts:AssumeRole",
-        Effect = "Allow",
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
+locals {
+  # 1. Load the raw data from the JSON file.
+  # Ensure you have a 'dns_records.json' file in the same directory.
+  dns_data = jsondecode(file("${path.module}/dns_records.json"))
 
-resource "aws_iam_role_policy_attachment" "lambda_policy_attachment" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
+  # 2. Convert the lists of records into maps, keyed by the record name.
+  # This is necessary for using for_each and for easily overriding records.
+  prod_cname_map = { for entry in local.dns_data.prod_cname_dns_entries : entry.name => entry }
+  prod_a_map     = { for entry in local.dns_data.prod_a_dns_entries : entry.name => entry }
+  dr_a_map       = { for entry in local.dns_data.dr_a_dns_entries : entry.name => entry }
+  ns_map         = { for entry in local.dns_data.prod_ns_dns_entries : entry.name => entry }
+  soa_map        = { for entry in local.dns_data.prod_soa_dns_entries : entry.name => entry }
 
-resource "aws_lambda_layer_version" "lambda_layer" {
-  filename   = "path/to/your/layer.zip"
-  layer_name = "my_lambda_layer"
-  compatible_runtimes = ["python3.12"]
-}
-
-resource "aws_security_group" "lambda_sg" {
-  name        = "lambda_sg"
-  description = "Allow SMB traffic"
-  vpc_id      = "vpc-12345678"
-
-  ingress {
-    from_port   = 445
-    to_port     = 445
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-}
-
-resource "aws_lambda_function" "my_lambda" {
-  function_name = "my_lambda_function"
-  role          = aws_iam_role.lambda_role.arn
-  handler       = "lambda_function.lambda_handler"
-  runtime       = "python3.12"
-  filename      = "path/to/your/lambda.zip"
-  layers        = [aws_lambda_layer_version.lambda_layer.arn]
-  security_group_ids = [aws_security_group.lambda_sg.id]
+  # 3. Create the final map for A records.
+  # Start with the production records. If the DR flag is true, merge the DR
+  # records, which will automatically overwrite any matching production entries.
+  final_a_records = var.is_dr_active ? merge(local.prod_a_map, local.dr_a_map) : local.prod_a_map
 }
