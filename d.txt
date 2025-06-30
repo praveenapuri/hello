@@ -4,19 +4,6 @@
 # This is the core file that defines the infrastructure resources.
 # -----------------------------------------------------------------------------
 
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1" # Or your primary region
-}
-
 # Look up the Hosted Zone ID for the domain.
 # This makes the configuration reusable for any domain.
 data "aws_route53_zone" "selected" {
@@ -43,7 +30,7 @@ resource "aws_route53_record" "a_records" {
       # This assumes the ELB/NLB is in the same Hosted Zone. Adjust if needed.
       # For public ALBs, you might need a separate data source to look up their zone IDs.
       # For simplicity, we use the main zone ID here, which works for internal resources.
-      zone_id                = data.aws_route53_zone.selected.zone_id 
+      zone_id                = data.aws_route53_zone.selected.zone_id
       evaluate_target_health = true
     }
   }
@@ -85,6 +72,28 @@ resource "aws_route53_record" "soa_record" {
   zone_id = data.aws_route53_zone.selected.zone_id
   name    = each.value.name
   type    = "SOA"
+  ttl     = 900
+  records = [each.value.record]
+}
+
+# --- PROD NLB Record ---
+resource "aws_route53_record" "prod_nlb_record" {
+  for_each = local.prod_nlb_map
+
+  zone_id = data.aws_route53_zone.selected.zone_id
+  name    = each.value.name
+  type    = "A"
+  ttl     = 900
+  records = [each.value.record]
+}
+
+# --- DR NLB Record ---
+resource "aws_route53_record" "dr_nlb_record" {
+  for_each = local.dr_nlb_map
+
+  zone_id = data.aws_route53_zone.selected.zone_id
+  name    = each.value.name
+  type    = "A"
   ttl     = 900
   records = [each.value.record]
 }
