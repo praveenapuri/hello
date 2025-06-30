@@ -1,105 +1,17 @@
-# Configure the AWS provider
-provider "aws" {
-  region = "us-east-1" # Ensure this matches your AWS region
+# -----------------------------------------------------------------------------
+# variables.tf
+# -----------------------------------------------------------------------------
+# This file defines the input variables for our configuration.
+# -----------------------------------------------------------------------------
+
+variable "domain_name" {
+  description = "The domain name of the Route 53 hosted zone."
+  type        = string
+  default     = "epic-prod.aws.cignacloud.com"
 }
 
-# Data source to retrieve the Hosted Zone ID for your domain
-# You MUST replace "YOUR_HOSTED_ZONE_ID_HERE" with your actual Hosted Zone ID
-data "aws_route53_zone" "primary" {
-  name = "epic-prod.aws.cignacloud.com." # Note the trailing dot is important
-  # Alternatively, you can use `zone_id` if you know it directly:
-  # zone_id = "YOUR_HOSTED_ZONE_ID_HERE"
-}
-
-# Load the DNS data from the local JSON file
-locals {
-  dns_data = jsondecode(file("dns_data.json"))
-
-  # Common TTL for all records (Time-To-Live in seconds)
-  default_ttl = 300
-
-  # Filter and categorize CNAME records
-  cname_records = { for entry in local.dns_data.prod_cname_dns_entries :
-    entry.name => {
-      name   = entry.name
-      record = entry.record
-    }
-  }
-
-  # Filter and categorize A records
-  a_records_raw = { for entry in local.dns_data.prod_a_dns_entries :
-    entry.name => {
-      name   = entry.name
-      record = entry.record
-    }
-  }
-
-  # Separate A records into IP-based and ELB-alias based
-  a_ip_records = { for k, v in local.a_records_raw :
-    k => v if !can(regex("^.+\\.elb\\.[a-z]{2}-[a-z]+-[0-9]+\\.amazonaws\\.com$", v.record))
-  }
-
-  a_elb_aliases = { for k, v in local.a_records_raw :
-    k => v if can(regex("^.+\\.elb\\.[a-z]{2}-[a-z]+-[0-9]+\\.amazonaws\\.com$", v.record))
-  }
-
-  # Combine CNAME records that point to ELBs with A records that point to ELBs
-  # These will be created as CNAME and A records, respectively, that leverage the `alias` block
-  # Note: The 'systempulse-endpoint-target' in cname_records points to an ALB, which will be handled as a CNAME alias.
-  # The 'systempulse' in a_records points to an ALB, which will be handled as an A alias.
-  all_elb_records = merge(
-    { for k, v in local.cname_records : k => v if can(regex("^.+\\.elb\\.[a-z]{2}-[a-z]+-[0-9]+\\.amazonaws\\.com$", v.record)) },
-    local.a_elb_aliases
-  )
-}
-
-############################################
-# Route 53 Records
-############################################
-
-# Create CNAME records
-resource "aws_route53_record" "cname_entries" {
-  for_each = local.cname_records
-
-  zone_id = data.aws_route53_zone.primary.zone_id
-  name    = each.value.name
-  type    = "CNAME"
-  ttl     = local.default_ttl
-  records = [each.value.record] # CNAME records always point to a domain name
-}
-
-
-# Create A records for IP addresses
-resource "aws_route53_record" "a_ip_entries" {
-  for_each = local.a_ip_records
-
-  zone_id = data.aws_route53_zone.primary.zone_id
-  name    = each.value.name
-  type    = "A"
-  ttl     = local.default_ttl
-  records = [each.value.record] # A records point to an IP address
-}
-
-# Create A records that are ALIASes to ELBs
-# This requires fetching the ELB's hosted zone ID dynamically.
-# Note: ELBs have specific hosted zone IDs per region.
-# The `evaluate_target_health` property is typically set to `true` for ELB aliases.
-resource "aws_route53_record" "a_elb_aliases" {
-  for_each = local.a_elb_aliases
-
-  zone_id = data.aws_route53_zone.primary.zone_id
-  name    = each.value.name
-  type    = "A"
-
-  # Use `lookup` to determine the correct ELB hosted zone ID based on its DNS name.
-  # This map contains common hosted zone IDs for ELBs in us-east-1.
-  # For more robust solutions, consider using `data "aws_lb"` or `data "aws_elb"`
-  # if you know the exact ALB/NLB ARN or name.
-  # Otherwise, this static map works for common cases.
-  # Reference: https://docs.aws.amazon.com/general/latest/gr/elb.html#dns-hostnames
-  alias {
-    name                   = each.value.record
-    zone_id                = "Z35SXDOTXLV-S6" # Common for ALBs/NLBs in us-east-1
-    evaluate_target_health = true
-  }
+variable "is_dr_active" {
+  description = "Set to true to activate Disaster Recovery DNS records. Set to false for standard Production records."
+  type        = bool
+  default     = false # Default to production environment
 }
