@@ -8,18 +8,27 @@
 locals {
   # 1. Load the raw data from the JSON file.
   # Ensure you have a 'dns_records.json' file in the same directory.
-  dns_data = jsondecode(file("${path.module}/dns_records.json"))
+  dns_data = jsondecode(file("${path.module}/dns_data.json"))
 
   # 2. Convert the lists of records into maps, keyed by the record name.
   # This is necessary for using for_each and for easily overriding records.
   prod_cname_map = { for entry in local.dns_data.prod_cname_dns_entries : entry.name => entry }
   prod_a_map     = { for entry in local.dns_data.prod_a_dns_entries : entry.name => entry }
+  prod_ns_map         = { for entry in local.dns_data.prod_ns_dns_entries : entry.name => entry }
+  prod_soa_map        = { for entry in local.dns_data.prod_soa_dns_entries : entry.name => entry }
+  prod_nlb_map        = { for entry in local.dns_data.prod_nlb_dns_entries : entry.name => entry }
   dr_a_map       = { for entry in local.dns_data.dr_a_dns_entries : entry.name => entry }
-  ns_map         = { for entry in local.dns_data.prod_ns_dns_entries : entry.name => entry }
-  soa_map        = { for entry in local.dns_data.prod_soa_dns_entries : entry.name => entry }
-
+  dr_nlb_map        = { for entry in local.dns_data.dr_nlb_dns_entries : entry.name => entry }
+  prod_records = merge(local.prod_a_map, local.prod_cname_map, local.prod_ns_map, local.prod_soa_map)
+  dr_records = merge(local.dr_a_map)
+  
   # 3. Create the final map for A records.
   # Start with the production records. If the DR flag is true, merge the DR
   # records, which will automatically overwrite any matching production entries.
-  final_a_records = var.is_dr_active ? merge(local.prod_a_map, local.dr_a_map) : local.prod_a_map
+  ## final_a_records = var.is_dr_active ? merge(local.prod_a_map, local.dr_a_map) : local.prod_a_map
+
+  # 4. Create the final map for NLB records.
+  # Start with the production records. If the NLB-DR flag is true, merge the NLB
+  # records, which will automatically overwrite any matching production entries.
+  # final_nlb_records = var.is_drnlb_active ? local.dr_nlb_map : local.prod_nlb_map
 }
