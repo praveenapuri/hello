@@ -37,8 +37,10 @@ resource "aws_route53_record" "a_records" {
   }
 
   # If the record is not an alias (i.e., it's an IP address), set the records attribute.
-  records = !strcontains(each.value.record, "amazonaws.com") ? [each.value.record] : null
-  ttl     = !strcontains(each.value.record, "amazonaws.com") ? 300 : null
+ # records = !strcontains(each.value.record, "amazonaws.com") ? [each.value.record] : null
+ # ttl     = !strcontains(each.value.record, "amazonaws.com") ? 300 : null
+records = length(regexall("amazonaws\\.com", each.value.record)) == 0 ? [each.value.record] : null
+ttl     = length(regexall("amazonaws\\.com", each.value.record)) == 0 ? 300 : null
 }
 
 
