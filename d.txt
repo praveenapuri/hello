@@ -25,6 +25,7 @@ resource "aws_route53_record" "a_records" {
   dynamic "alias" {
     # The condition checks if the record value contains 'amazonaws.com'.
     for_each = contains(keys(each.value), "record") && strcontains(each.value.record, "amazonaws.com") ? [1] : []
+    for_each = contains(keys(each.value), "record") && length(regexall("amazonaws\\.com", each.value.record)) > 0 ? [1] : []
     content {
       name                   = each.value.record
       # This assumes the ELB/NLB is in the same Hosted Zone. Adjust if needed.
