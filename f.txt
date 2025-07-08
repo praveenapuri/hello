@@ -1,5 +1,115 @@
-resource "aws_lambda_layer_version" "additional_layer" {
-  filename   = "path/to/your/additional_layer.zip"
-  layer_name = "additional_layer"
-  compatible_runtimes = ["python3.12"]
+resource "aws_route53_health_check" "primary_health_check" {
+  fqdn = "primary.example.com"
+  type = "HTTP"
+}
+
+resource "aws_route53_record" "primary" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "60"
+  records = ["192.0.2.1"]
+
+  failover_routing_policy {
+    type = "PRIMARY"
+  }
+
+  set_identifier  = "primary-failover"
+  health_check_id = aws_route53_health_check.primary_health_check.id
+}
+
+resource "aws_route53_record" "secondary" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "60"
+  records = ["198.51.100.1"]
+
+  failover_routing_policy {
+    type = "SECONDARY"
+  }
+
+  set_identifier = "secondary-failover"
+}
+Here, traffic is directed to the primary record as long as its associated health check is passing. If the health check fails, Route 53 will automatically start responding with the secondary record's value.
+
+Geolocation Routing Policy
+Geolocation routing allows you to direct traffic based on the geographic location of your users.
+
+Terraform
+
+resource "aws_route53_record" "north_america" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "300"
+  records = ["192.0.2.1"]
+
+  geolocation_routing_policy {
+    continent = "NA"
+  }
+
+  set_identifier = "north-america"
+}
+
+resource "aws_route53_record" "europe" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "300"
+  records = ["198.51.100.1"]
+
+  geolocation_routing_policy {
+    continent = "EU"
+  }
+
+  set_identifier = "europe"
+}
+
+resource "aws_route53_record" "default" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "300"
+  records = ["203.0.113.1"]
+
+  geolocation_routing_policy {
+    country = "*"
+  }
+
+  set_identifier = "default-location"
+}
+In this setup, users from North America are routed to one IP, European users to another, and all other users are directed to a default IP address.
+
+Latency Routing Policy
+Latency-based routing directs traffic to the AWS region that provides the best latency for the requesting user.
+
+Terraform
+
+resource "aws_route53_record" "us_east" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "60"
+  records = ["192.0.2.1"]
+
+  latency_routing_policy {
+    region = "us-east-1"
+  }
+
+  set_identifier = "us-east-1-latency"
+}
+
+resource "aws_route53_record" "eu_west" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "www.example.com"
+  type    = "A"
+  ttl     = "60"
+  records = ["198.51.100.1"]
+
+  latency_routing_policy {
+    region = "eu-west-1"
+  }
+
+  set_identifier = "eu-west-1-latency"
 }
