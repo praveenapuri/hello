@@ -8,36 +8,31 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1" # Or the region where your bucket is located
+  region = "us-east-1" # <-- Change to your desired region
 }
 
-# 1. Reference your existing S3 bucket
-#    This tells Terraform to look up the bucket without managing it.
-data "aws_s3_bucket" "existing_bucket" {
-  # Replace with the exact name of your existing bucket
-  bucket = "name-of-your-existing-bucket"
+# Data source to find all instances that aren't terminated
+data "aws_instances" "all" {
+  instance_state_names = ["pending", "running", "shutting-down", "stopping", "stopped"]
 }
 
-# 2. Apply the lifecycle configuration to the referenced bucket
-#    This resource will be managed by Terraform.
-resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle_rule" {
-  # Get the bucket name from the data source above
-  bucket = data.aws_s3_bucket.existing_bucket.id
+# Output a simple list of the instance IDs found
+output "instance_ids" {
+  description = "A list of all instance IDs found."
+  value       = data.aws_instances.all.ids
+}
 
-  rule {
-    id     = "auto-expire-after-6-months"
-    status = "Enabled"
-
-    # Action to take on the objects
-    expiration {
-      # Number of days after object creation to permanently delete it.
-      days = 180
-    }
-
-    # You can also filter which objects this rule applies to.
-    # For example, to only apply it to files in a 'logs/' folder:
-    # filter {
-    #   prefix = "logs/"
-    # }
+# Output a map of each instance ID to its current state
+output "instance_statuses" {
+  description = "A map of instance IDs to their current status."
+  value = {
+    for id in data.aws_instances.all.ids : id => data.aws_instance.all[id].instance_state
   }
+}
+
+# Data source to get details for each individual instance found above
+# This is needed to access the 'instance_state' for each one
+data "aws_instance" "all" {
+  for_each = toset(data.aws_instances.all.ids)
+  instance_id = each.key
 }
