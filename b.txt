@@ -1,39 +1,12 @@
- CloudWatch Alarm for Lambda Errors
-resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
-  alarm_name          = "lambda-error-alarm-my-example-lambda"
-  alarm_description   = "Triggers when the 'my-example-lambda' function has errors."
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  threshold           = 1
-  period              = 60 # In seconds
+resource "aws_s3_bucket_lifecycle_configuration" "my_bucket_lifecycle" {
+  bucket = aws_s3_bucket.my_bucket.id
 
-  # Metric configuration
-  namespace   = "AWS/Lambda"
-  metric_name = "Errors"
-  statistic   = "Sum"
+  rule {
+    id     = "log-storage-rule"
+    status = "Enabled"
 
-  # Link alarm to the specific Lambda function
-  dimensions = {
-    FunctionName = aws_lambda_function.example.function_name
+    expiration {
+      days = 90 # You might be changing the days here
+    }
   }
-
-  # Action to take when the alarm state is reached
-  alarm_actions = [aws_sns_topic.lambda_alarms.arn]
-}
-
-resource "aws_cloudwatch_metric_alarm" "lambda_duration_alarm" {
-  # ... (copy other settings from above) ...
-  alarm_name          = "lambda-duration-alarm-my-example-lambda"
-  metric_name         = "Duration"
-  extended_statistic  = "p90" # Use percentile instead of Sum/Average
-  threshold           = 5000  # Duration is in milliseconds
-  comparison_operator = "GreaterThanThreshold"
-}
-
-resource "aws_cloudwatch_metric_alarm" "lambda_throttle_alarm" {
-  # ... (copy other settings from above) ...
-  alarm_name  = "lambda-throttle-alarm-my-example-lambda"
-  metric_name = "Throttles"
-  statistic   = "Sum"
-  threshold   = 1 # Trigger on the first throttle event
 }
