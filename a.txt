@@ -46,3 +46,14 @@ resource "aws_ssm_document" "instance_manager" {
     ]
   })
 }
+
+aws ssm send-command \
+  --document-name "Manage-EC2-Instances-With-Context" \
+  --targets "Key=InstanceIds,Values=i-0123456789abcdef0" \
+  --parameters '{"InstanceId":["i-0123456789abcdef0"], "Action":["Stop"]}'
+
+
+aws ssm send-command \
+  --document-name "Manage-EC2-Instances-With-Context" \
+  --targets "Key=InstanceIds,Values=i-0123456789abcdef0" \
+  --parameters '{"InstanceId":["i-0123456789abcdef0"], "Action":["Start"]}'
