@@ -1,30 +1,44 @@
-resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle_config" {
-  bucket = "name-of-your-existing-bucket" # Change this
+resource "aws_ssm_document" "instance_start_stop_by_id" {
+  name            = "Start-Stop-EC2-Instance-By-ID"
+  document_type   = "Command"
+  document_format = "JSON"
 
-  # Rule 1: Expires the current version of objects after 180 days.
-  # This action is what creates the delete markers.
-  rule {
-    id     = "expire-current-versions"
-    status = "Enabled"
-
-    filter {
-      prefix = "logs/"
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Starts or stops a specific EC2 instance."
+    parameters = {
+      "InstanceId" = {
+        type        = "String"
+        description = "(Required) The ID of the EC2 instance to target."
+      }
+      "Action" = {
+        type          = "String"
+        description   = "(Required) The action to perform."
+        allowedValues = ["Start", "Stop"]
+      }
     }
-
-    expiration {
-      days = 180
-    }
-  }
-
-  # Rule 2: Cleans up the expired object delete markers.
-  # This is the rule that solves the problem.
-  rule {
-    id     = "cleanup-expired-delete-markers"
-    status = "Enabled"
-
-    expiration {
-      # This flag tells S3 to find and remove these specific markers.
-      expired_object_delete_marker = true
-    }
-  }
+    mainSteps = [
+      {
+        action = "aws:runShellScript"
+        name   = "executeStartStop"
+        inputs = {
+          runCommand = [
+            "#!/bin/bash",
+            "set -e",
+            "",
+            "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+            "echo \"Executing action [{{Action}}] on instance [{{InstanceId}}] in region [$REGION]\"",
+            "",
+            "if [ \"{{Action}}\" == \"Stop\" ]; then",
+            "  aws ec2 stop-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
+            "elif [ \"{{Action}}\" == \"Start\" ]; then",
+            "  aws ec2 start-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
+            "fi",
+            "",
+            "echo \"Command sent successfully.\""
+          ]
+        }
+      }
+    ]
+  })
 }
