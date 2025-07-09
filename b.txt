@@ -1,12 +1,30 @@
-resource "aws_s3_bucket_lifecycle_configuration" "my_bucket_lifecycle" {
-  bucket = aws_s3_bucket.my_bucket.id
+resource "aws_s3_bucket_lifecycle_configuration" "bucket_lifecycle_config" {
+  bucket = "name-of-your-existing-bucket" # Change this
 
+  # Rule 1: Expires the current version of objects after 180 days.
+  # This action is what creates the delete markers.
   rule {
-    id     = "log-storage-rule"
+    id     = "expire-current-versions"
+    status = "Enabled"
+
+    filter {
+      prefix = "logs/"
+    }
+
+    expiration {
+      days = 180
+    }
+  }
+
+  # Rule 2: Cleans up the expired object delete markers.
+  # This is the rule that solves the problem.
+  rule {
+    id     = "cleanup-expired-delete-markers"
     status = "Enabled"
 
     expiration {
-      days = 90 # You might be changing the days here
+      # This flag tells S3 to find and remove these specific markers.
+      expired_object_delete_marker = true
     }
   }
 }
