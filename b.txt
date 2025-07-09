@@ -1,17 +1,39 @@
-# -----------------------------------------------------------------------------
-# variables.tf
-# -----------------------------------------------------------------------------
-# This file defines the input variables for our configuration.
-# -----------------------------------------------------------------------------
+ CloudWatch Alarm for Lambda Errors
+resource "aws_cloudwatch_metric_alarm" "lambda_error_alarm" {
+  alarm_name          = "lambda-error-alarm-my-example-lambda"
+  alarm_description   = "Triggers when the 'my-example-lambda' function has errors."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  threshold           = 1
+  period              = 60 # In seconds
 
-variable "domain_name" {
-  description = "The domain name of the Route 53 hosted zone."
-  type        = string
-  default     = "epic-prod.aws.cignacloud.com"
+  # Metric configuration
+  namespace   = "AWS/Lambda"
+  metric_name = "Errors"
+  statistic   = "Sum"
+
+  # Link alarm to the specific Lambda function
+  dimensions = {
+    FunctionName = aws_lambda_function.example.function_name
+  }
+
+  # Action to take when the alarm state is reached
+  alarm_actions = [aws_sns_topic.lambda_alarms.arn]
 }
 
-variable "is_dr_active" {
-  description = "Set to true to activate Disaster Recovery DNS records. Set to false for standard Production records."
-  type        = bool
-  default     = false # Default to production environment
+resource "aws_cloudwatch_metric_alarm" "lambda_duration_alarm" {
+  # ... (copy other settings from above) ...
+  alarm_name          = "lambda-duration-alarm-my-example-lambda"
+  metric_name         = "Duration"
+  extended_statistic  = "p90" # Use percentile instead of Sum/Average
+  threshold           = 5000  # Duration is in milliseconds
+  comparison_operator = "GreaterThanThreshold"
+}
+
+resource "aws_cloudwatch_metric_alarm" "lambda_throttle_alarm" {
+  # ... (copy other settings from above) ...
+  alarm_name  = "lambda-throttle-alarm-my-example-lambda"
+  metric_name = "Throttles"
+  statistic   = "Sum"
+  threshold   = 1 # Trigger on the first throttle event
 }
