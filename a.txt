@@ -1,38 +1,48 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
+resource "aws_ssm_document" "instance_manager" {
+  name            = "Manage-EC2-Instances-With-Context"
+  document_type   = "Command"
+  document_format = "JSON"
+
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Lists all instances in the region and then starts/stops a specific instance."
+    parameters = {
+      "InstanceId" = {
+        type        = "String"
+        description = "(Required) The ID of the EC2 instance to start or stop."
+      },
+      "Action" = {
+        type          = "String"
+        description   = "(Required) The action to perform."
+        allowedValues = ["Start", "Stop"]
+      }
     }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1" # <-- Change to your desired region
-}
-
-# Data source to find all instances that aren't terminated
-data "aws_instances" "all" {
-  instance_state_names = ["pending", "running", "shutting-down", "stopping", "stopped"]
-}
-
-# Output a simple list of the instance IDs found
-output "instance_ids" {
-  description = "A list of all instance IDs found."
-  value       = data.aws_instances.all.ids
-}
-
-# Output a map of each instance ID to its current state
-output "instance_statuses" {
-  description = "A map of instance IDs to their current status."
-  value = {
-    for id in data.aws_instances.all.ids : id => data.aws_instance.all[id].instance_state
-  }
-}
-
-# Data source to get details for each individual instance found above
-# This is needed to access the 'instance_state' for each one
-data "aws_instance" "all" {
-  for_each = toset(data.aws_instances.all.ids)
-  instance_id = each.key
+    mainSteps = [
+      {
+        action = "aws:runShellScript"
+        name   = "listAndAct"
+        inputs = {
+          runCommand = [
+            "#!/bin/bash",
+            "set -e",
+            "",
+            "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+            "echo \"--- Fetching all instances in region: $REGION ---\"",
+            "aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name}' --output table",
+            "echo \"----------------------------------------------------\"",
+            "",
+            "echo \"Executing action [{{Action}}] on instance [{{InstanceId}}]\"",
+            "",
+            "if [ \"{{Action}}\" == \"Stop\" ]; then",
+            "  aws ec2 stop-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
+            "elif [ \"{{Action}}\" == \"Start\" ]; then",
+            "  aws ec2 start-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
+            "fi",
+            "",
+            "echo \"Command sent successfully.\""
+          ]
+        }
+      }
+    ]
+  })
 }
