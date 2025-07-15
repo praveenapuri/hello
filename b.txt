@@ -1,41 +1,39 @@
-resource "aws_ssm_document" "instance_start_stop_by_id" {
-  name            = "Start-Stop-EC2-Instance-By-ID"
+resource "aws_ssm_document" "windows_manager" {
+  name            = "Windows-EC2-Manager"
   document_type   = "Command"
   document_format = "JSON"
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Starts or stops a specific EC2 instance."
+    description   = "Windows: Lists all EC2 instances OR starts/stops a specific instance."
     parameters = {
-      "InstanceId" = {
-        type        = "String"
-        description = "(Required) The ID of the EC2 instance to target."
-      }
-      "Action" = {
-        type          = "String"
-        description   = "(Required) The action to perform."
-        allowedValues = ["Start", "Stop"]
-      }
+      # ... (Parameters are the same as before) ...
     }
     mainSteps = [
       {
-        action = "aws:runShellScript"
-        name   = "executeStartStop"
+        action = "aws:runPowerShellScript" # Use the PowerShell action
+        name   = "executeTask"
         inputs = {
           runCommand = [
-            "#!/bin/bash",
-            "set -e",
+            "$ErrorActionPreference = 'Stop'",
+            "$Region = (Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/placement/region)",
             "",
-            "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
-            "echo \"Executing action [{{Action}}] on instance [{{InstanceId}}] in region [$REGION]\"",
-            "",
-            "if [ \"{{Action}}\" == \"Stop\" ]; then",
-            "  aws ec2 stop-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
-            "elif [ \"{{Action}}\" == \"Start\" ]; then",
-            "  aws ec2 start-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
-            "fi",
-            "",
-            "echo \"Command sent successfully.\""
+            "# --- Execution Mode: List Instances ---",
+            "if ('{{ExecutionMode}}' -eq 'ListInstances') {",
+            "    Write-Host \"--- Fetching all instances in region: $Region ---\"",
+            "    aws ec2 describe-instances --region $Region --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
+            "}",
+            "# --- Execution Mode: Manage a Specific Instance ---",
+            "elseif ('{{ExecutionMode}}' -eq 'ManageInstance') {",
+            "    if ('{{InstanceId}}' -eq 'none' -or '{{Action}}' -eq 'none') {",
+            "        Write-Error 'InstanceId and Action parameters are required for ManageInstance mode.'",
+            "        exit 1",
+            "    }",
+            "    Write-Host \"Executing action [{{Action}}] on instance [{{InstanceId}}] in region [$Region]\"",
+            "    if ('{{Action}}' -eq 'Start') { aws ec2 start-instances --region $Region --instance-ids '{{InstanceId}}' }",
+            "    if ('{{Action}}' -eq 'Stop') { aws ec2 stop-instances --region $Region --instance-ids '{{InstanceId}}' }",
+            "    Write-Host 'Command sent successfully.'",
+            "}"
           ]
         }
       }
