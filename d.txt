@@ -1,102 +1,59 @@
-# -----------------------------------------------------------------------------
-# main.tf
-# -----------------------------------------------------------------------------
-# This is the core file that defines the infrastructure resources.
-# -----------------------------------------------------------------------------
+\resource "aws_ssm_document" "linux_unified_manager" {
+  name            = "Unified-Linux-EC2-Manager"
+  document_type   = "Command"
+  document_format = "JSON"
 
-# Look up the Hosted Zone ID for the domain.
-# This makes the configuration reusable for any domain.
-data "aws_route53_zone" "selected" {
-  name = var.domain_name
-}
-
-# --- A Records ---
-# This single resource block handles all A-records, including standard IP-based
-# records and ALIAS records pointing to AWS resources like ALBs/NLBs.
-resource "aws_route53_record" "a_records" {
-  for_each = local.final_a_records
-
-  zone_id = data.aws_route53_zone.selected.zone_id
-  name    = each.value.name
-  type    = "A"
-
-  # If the record value is an AWS resource, create an ALIAS record.
-  # Otherwise, create a standard A record with an IP address.
-  dynamic "alias" {
-    # The condition checks if the record value contains 'amazonaws.com'.
-    for_each = contains(keys(each.value), "record") && strcontains(each.value.record, "amazonaws.com") ? [1] : []
-    for_each = contains(keys(each.value), "record") && length(regexall("amazonaws\\.com", each.value.record)) > 0 ? [1] : []
-    content {
-      name                   = each.value.record
-      # This assumes the ELB/NLB is in the same Hosted Zone. Adjust if needed.
-      # For public ALBs, you might need a separate data source to look up their zone IDs.
-      # For simplicity, we use the main zone ID here, which works for internal resources.
-      zone_id                = data.aws_route53_zone.selected.zone_id
-      evaluate_target_health = true
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Linux: Lists all instances, starts all stopped instances, or stops all running instances."
+    parameters = {
+      "ExecutionMode" = {
+        type          = "String"
+        description   = "(Required) The action to perform."
+        allowedValues = ["ListAll", "StartAllStopped", "StopAllRunning"]
+      }
     }
-  }
-
-  # If the record is not an alias (i.e., it's an IP address), set the records attribute.
- # records = !strcontains(each.value.record, "amazonaws.com") ? [each.value.record] : null
- # ttl     = !strcontains(each.value.record, "amazonaws.com") ? 300 : null
-records = length(regexall("amazonaws\\.com", each.value.record)) == 0 ? [each.value.record] : null
-ttl     = length(regexall("amazonaws\\.com", each.value.record)) == 0 ? 300 : null
-}
-
-
-# --- CNAME Records ---
-resource "aws_route53_record" "cname_records" {
-  for_each = local.prod_cname_map
-
-  zone_id = data.aws_route53_zone.selected.zone_id
-  name    = each.value.name
-  type    = "CNAME"
-  ttl     = 300
-  records = [each.value.record]
-}
-
-# --- NS Records ---
-resource "aws_route53_record" "ns_records" {
-  for_each = local.ns_map
-
-  zone_id = data.aws_route53_zone.selected.zone_id
-  name    = each.value.name
-  type    = "NS"
-  ttl     = 172800
-  # The record string contains multiple space-separated values.
-  # We need to split them into a list of strings for Terraform.
-  records = split(" ", each.value.record)
-}
-
-# --- SOA Record ---
-resource "aws_route53_record" "soa_record" {
-  for_each = local.soa_map
-
-  zone_id = data.aws_route53_zone.selected.zone_id
-  name    = each.value.name
-  type    = "SOA"
-  ttl     = 900
-  records = [each.value.record]
-}
-
-# --- PROD NLB Record ---
-resource "aws_route53_record" "prod_nlb_record" {
-  for_each = local.prod_nlb_map
-
-  zone_id = data.aws_route53_zone.selected.zone_id
-  name    = each.value.name
-  type    = "A"
-  ttl     = 900
-  records = [each.value.record]
-}
-
-# --- DR NLB Record ---
-resource "aws_route53_record" "dr_nlb_record" {
-  for_each = local.dr_nlb_map
-
-  zone_id = data.aws_route53_zone.selected.zone_id
-  name    = each.value.name
-  type    = "A"
-  ttl     = 900
-  records = [each.value.record]
+    mainSteps = [
+      {
+        action = "aws:runShellScript"
+        name   = "executeUnifiedTask"
+        inputs = {
+          runCommand = [
+            "#!/bin/bash",
+            "set -e",
+            "",
+            "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+            "",
+            "# --- Mode: List All Instances ---",
+            "if [ \"{{ExecutionMode}}\" == \"ListAll\" ]; then",
+            "  echo \"--- Fetching all instances in region: $REGION ---\"",
+            "  aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
+            "",
+            "# --- Mode: Stop All Running Instances ---",
+            "elif [ \"{{ExecutionMode}}\" == \"StopAllRunning\" ]; then",
+            "  echo \"Finding all running instances to stop...\"",
+            "  instance_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=running\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
+            "  if [ -n \"$instance_ids\" ]; then",
+            "    echo \"Stopping instances: $instance_ids\"",
+            "    aws ec2 stop-instances --region $REGION --instance-ids $instance_ids",
+            "  else",
+            "    echo \"No running instances found.\"",
+            "  fi",
+            "",
+            "# --- Mode: Start All Stopped Instances ---",
+            "elif [ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]; then",
+            "  echo \"Finding all stopped instances to start...\"",
+            "  instance_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=stopped\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
+            "  if [ -n \"$instance_ids\" ]; then",
+            "    echo \"Starting instances: $instance_ids\"",
+            "    aws ec2 start-instances --region $REGION --instance-ids $instance_ids",
+            "  else",
+            "    echo \"No stopped instances found.\"",
+            "  fi",
+            "fi"
+          ]
+        }
+      }
+    ]
+  })
 }
