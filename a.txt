@@ -56,3 +56,23 @@ resource "aws_ssm_document" "multi_purpose_manager" {
     ]
   })
 }
+
+
+#!/bin/bash
+
+# Fetch instance details (Name, ID, Type)
+instances=$(aws ec2 describe-instances \
+  --query "Reservations[*].Instances[*].[Tags[?Key=='Name']|[0].Value, InstanceId, InstanceType]" \
+  --output text)
+
+# Fetch instance health status (System and Instance)
+statuses=$(aws ec2 describe-instance-status \
+  --query "InstanceStatuses[*].[InstanceId, SystemStatus.Status, InstanceStatus.Status]" \
+  --output text)
+
+# Print the header
+printf "%-25s %-22s %-15s %-15s %-15s\n" "NAME" "ID" "TYPE" "SYSTEM_STATUS" "INSTANCE_STATUS"
+printf -- '-%.0s' {1..95}; echo ""
+
+# Join the two results by instance ID and print the formatted table
+join <(sort <<<"$instances") <(sort <<<"$statuses") | awk '{printf "%-25s %-22s %-15s %-15s %-15s\n", $2, $1, $3, $4, $5}'
