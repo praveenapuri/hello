@@ -1,42 +1,23 @@
-resource "aws_ssm_document" "windows_manager" {
-  name            = "Windows-EC2-Manager"
-  document_type   = "Command"
-  document_format = "JSON"
+# Assume your SSM document is already created
+data "aws_ssm_document" "linux_manager" {
+  name = "Linux-Multi-Purpose-EC2-Manager"
+}
 
-  content = jsonencode({
-    schemaVersion = "2.2"
-    description   = "Windows: Lists all EC2 instances OR starts/stops a specific instance."
-    parameters = {
-      # ... (Parameters are the same as before) ...
-    }
-    mainSteps = [
-      {
-        action = "aws:runPowerShellScript" # Use the PowerShell action
-        name   = "executeTask"
-        inputs = {
-          runCommand = [
-            "$ErrorActionPreference = 'Stop'",
-            "$Region = (Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/placement/region)",
-            "",
-            "# --- Execution Mode: List Instances ---",
-            "if ('{{ExecutionMode}}' -eq 'ListInstances') {",
-            "    Write-Host \"--- Fetching all instances in region: $Region ---\"",
-            "    aws ec2 describe-instances --region $Region --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
-            "}",
-            "# --- Execution Mode: Manage a Specific Instance ---",
-            "elseif ('{{ExecutionMode}}' -eq 'ManageInstance') {",
-            "    if ('{{InstanceId}}' -eq 'none' -or '{{Action}}' -eq 'none') {",
-            "        Write-Error 'InstanceId and Action parameters are required for ManageInstance mode.'",
-            "        exit 1",
-            "    }",
-            "    Write-Host \"Executing action [{{Action}}] on instance [{{InstanceId}}] in region [$Region]\"",
-            "    if ('{{Action}}' -eq 'Start') { aws ec2 start-instances --region $Region --instance-ids '{{InstanceId}}' }",
-            "    if ('{{Action}}' -eq 'Stop') { aws ec2 stop-instances --region $Region --instance-ids '{{InstanceId}}' }",
-            "    Write-Host 'Command sent successfully.'",
-            "}"
-          ]
-        }
-      }
-    ]
-  })
+# The association links the document to a specific target
+resource "aws_ssm_association" "run_on_specific_instance" {
+  name = data.aws_ssm_document.linux_manager.name
+
+  # --- This block defines the single target ---
+  targets {
+    key    = "InstanceIds"
+    values = ["i-0123456789abcdef0"] # <-- Hardcode your specific instance ID here
+  }
+
+  # --- Optional: Run on a schedule ---
+  schedule_expression = "rate(30 minutes)"
+
+  # --- Provide parameters for the document ---
+  parameters = {
+    ExecutionMode = "ListInstances"
+  }
 }
