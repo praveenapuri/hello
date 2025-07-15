@@ -1,4 +1,45 @@
-        Resource : [
-          "arn:aws:s3:::epic-${var.env}-member-load-archive/*",
-          "arn:aws:s3:::epic-${var.env}-member-load-archive"
-       ]
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:7 char:3
++ if [ "ListInstances" == "ListInstances" ]; then
++   ~
+Missing '(' after 'if' in if statement.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:7 char:5
++ if [ "ListInstances" == "ListInstances" ]; then
++     ~
+Missing type name after '['.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:13 char:5
++   if [ "none" == "none" ] || [ "none" == "none" ]; then
++     ~
+Missing '(' after 'if' in if statement.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:13 char:7
++   if [ "none" == "none" ] || [ "none" == "none" ]; then
++       ~
+Missing type name after '['.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:13 char:27
++   if [ "none" == "none" ] || [ "none" == "none" ]; then
++                           ~~
+The token '||' is not a valid statement separator in this version.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:13 char:31
++   if [ "none" == "none" ] || [ "none" == "none" ]; then
++                               ~
+Missing type name after '['.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:14 char:91
++ ... ceId and Action parameters are required for ManageInstance mode." >&2
++                                                                        ~
+Missing file specification after redirection operator.
+At C:\ProgramData\Amazon\SSM\InstanceData\i-0b9a944b55c18e86b\document\orchestration\6254a93e-c9ab-41fd-914a-90f5824938
+83\executeTask\_script.ps1:14 char:91
++ ... ceId and Action parameters are required for ManageInstance mode." >&2
++                                                                        ~
+The ampersand (&) character is not allowed. The & operator is reserved for future use; wrap an ampersand in double 
+quotation marks ("&") to pass it as part of a string.
+    + CategoryInfo          : ParserError: (:) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : MissingOpenParenthesisInIfStatement
+ 
+failed to run commands: exit status 1
