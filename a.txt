@@ -1,3 +1,44 @@
+# 1. IAM Role with necessary permissions for the EC2 instance
+resource "aws_iam_role" "ssm_ec2_manager_role" {
+  name = "SSM-EC2-Manager-Role"
+
+  # Allows an EC2 instance to assume this role
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action    = "sts:AssumeRole",
+        Effect    = "Allow",
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# 2. IAM Policy attached to the role
+resource "aws_iam_role_policy" "ssm_ec2_manager_policy" {
+  name = "SSM-EC2-Manager-Policy"
+  role = aws_iam_role.ssm_ec2_manager_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = [
+          "ec2:DescribeInstances",
+          "ec2:StartInstances",
+          "ec2:StopInstances"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# 3. The SSM Document
 resource "aws_ssm_document" "instance_manager" {
   name            = "Manage-EC2-Instances-With-Context"
   document_type   = "Command"
@@ -5,7 +46,7 @@ resource "aws_ssm_document" "instance_manager" {
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Lists all instances in the region and then starts/stops a specific instance."
+    description   = "Lists all EC2 instances and then starts/stops a specific one."
     parameters = {
       "InstanceId" = {
         type        = "String"
@@ -28,7 +69,7 @@ resource "aws_ssm_document" "instance_manager" {
             "",
             "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
             "echo \"--- Fetching all instances in region: $REGION ---\"",
-            "aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name}' --output table",
+            "aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
             "echo \"----------------------------------------------------\"",
             "",
             "echo \"Executing action [{{Action}}] on instance [{{InstanceId}}]\"",
@@ -46,14 +87,3 @@ resource "aws_ssm_document" "instance_manager" {
     ]
   })
 }
-
-aws ssm send-command \
-  --document-name "Manage-EC2-Instances-With-Context" \
-  --targets "Key=InstanceIds,Values=i-0123456789abcdef0" \
-  --parameters '{"InstanceId":["i-0123456789abcdef0"], "Action":["Stop"]}'
-
-
-aws ssm send-command \
-  --document-name "Manage-EC2-Instances-With-Context" \
-  --targets "Key=InstanceIds,Values=i-0123456789abcdef0" \
-  --parameters '{"InstanceId":["i-0123456789abcdef0"], "Action":["Start"]}'
