@@ -57,6 +57,10 @@ resource "aws_ssm_document" "multi_purpose_manager" {
   })
 }
 
+aws ec2 describe-instances \
+  --query "Reservations[*].Instances[*].{Name:Tags[?Key=='Name']|[0].Value, ID:InstanceId, State:State.Name, Type:InstanceType}" \
+  --output table
+
 
 #!/bin/bash
 
