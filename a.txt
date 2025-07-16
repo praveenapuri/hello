@@ -5,7 +5,7 @@ resource "aws_ssm_document" "linux_unified_manager" {
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Linux: Lists all instances, starts/stops instances, or stops all running instances, with an exception list."
+    description   = "Linux: Manages EC2 instances with an exception list."
     parameters = {
       "ExecutionMode" = {
         type          = "String"
@@ -28,30 +28,31 @@ resource "aws_ssm_document" "linux_unified_manager" {
             "set -e",
             "",
             "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
-            "EXCLUSIONS=$(echo \"{{ExcludeInstanceIds}}\" | tr ',' '\\n')", # Prepare exclusion list
             "",
-            "if [ \"{{ExecutionMode}}\" == \"ListAll\" ]; then",
-            "  echo \"--- Fetching all instances in region: $REGION ---\"",
+            "if [[ \"{{ExecutionMode}}\" == \"ListAll\" ]]; then",
             "  aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
-            "elif [ \"{{ExecutionMode}}\" == \"StopAllRunning\" ]; then",
-            "  echo \"Finding all running instances to stop...\"",
-            "  instance_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=running\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
-            "  final_ids=$(echo \"$instance_ids\" | tr ' ' '\\n' | grep -v -w -F -f <(echo \"$EXCLUSIONS\") || true)", # Filter out excluded IDs
-            "  if [ -n \"$final_ids\" ]; then",
-            "    echo \"Stopping instances: $final_ids\"",
-            "    aws ec2 stop-instances --region $REGION --instance-ids $final_ids",
+            "elif [[ \"{{ExecutionMode}}\" == \"StopAllRunning\" ]] || [[ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]]; then",
+            "  state_filter='running'",
+            "  if [[ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]]; then state_filter='stopped'; fi",
+            "",
+            "  echo \"Finding all $state_filter instances...\"",
+            "  all_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=$state_filter\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
+            "",
+            "  final_ids_to_act_on=''",
+            "  for id in $all_ids; do",
+            "    if ! [[ \",{{ExcludeInstanceIds}},\" =~ \",$id,\" ]]; then",
+            "      final_ids_to_act_on+=\"$id \"",
+            "    else",
+            "      echo \"Excluding instance: $id\"",
+            "    fi",
+            "  done",
+            "",
+            "  if [[ -n \"$final_ids_to_act_on\" ]]; then",
+            "    action_verb=$(echo \"{{ExecutionMode}}\" | sed -e 's/All.*//')",
+            "    echo \"${action_verb}ing instances: $final_ids_to_act_on\"",
+            "    aws ec2 ${action_verb,,}-instances --region $REGION --instance-ids $final_ids_to_act_on",
             "  else",
-            "    echo \"No running instances found to stop after exclusions.\"",
-            "  fi",
-            "elif [ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]; then",
-            "  echo \"Finding all stopped instances to start...\"",
-            "  instance_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=stopped\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
-            "  final_ids=$(echo \"$instance_ids\" | tr ' ' '\\n' | grep -v -w -F -f <(echo \"$EXCLUSIONS\") || true)", # Filter out excluded IDs
-            "  if [ -n \"$final_ids\" ]; then",
-            "    echo \"Starting instances: $final_ids\"",
-            "    aws ec2 start-instances --region $REGION --instance-ids $final_ids",
-            "  else",
-            "    echo \"No stopped instances found to start after exclusions.\"",
+            "    echo \"No instances found to act on after exclusions.\"",
             "  fi",
             "fi"
           ]
