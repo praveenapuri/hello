@@ -1,51 +1,58 @@
-resource "aws_ssm_document" "linux_manager" {
-  name            = "Linux-Multi-Purpose-EC2-Manager"
+resource "aws_ssm_document" "linux_unified_manager" {
+  name            = "Unified-Linux-EC2-Manager"
   document_type   = "Command"
   document_format = "JSON"
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Linux: Lists all EC2 instances OR starts/stops a specific instance."
+    description   = "Linux: Lists all instances, starts/stops instances, or stops all running instances, with an exception list."
     parameters = {
       "ExecutionMode" = {
         type          = "String"
-        description   = "(Required) The mode of operation."
-        allowedValues = ["ListInstances", "ManageInstance"]
+        description   = "(Required) The action to perform."
+        allowedValues = ["ListAll", "StartAllStopped", "StopAllRunning"]
       },
-      "InstanceId" = {
+      "ExcludeInstanceIds" = {
         type        = "String"
-        description = "(Optional) The ID of the EC2 instance to target. Required only for 'ManageInstance' mode."
-        default     = "none"
-      },
-      "Action" = {
-        type          = "String"
-        description   = "(Optional) The action to perform. Required only for 'ManageInstance' mode."
-        allowedValues = ["Start", "Stop", "none"]
-        default       = "none"
+        description = "(Optional) Comma-separated list of EC2 instance IDs to exclude from start/stop actions."
+        default     = ""
       }
     }
     mainSteps = [
       {
         action = "aws:runShellScript"
-        name   = "executeTask"
+        name   = "executeUnifiedTask"
         inputs = {
           runCommand = [
             "#!/bin/bash",
             "set -e",
             "",
             "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+            "EXCLUSIONS=$(echo \"{{ExcludeInstanceIds}}\" | tr ',' '\\n')", # Prepare exclusion list
             "",
-            "if [ \"{{ExecutionMode}}\" == \"ListInstances\" ]; then",
+            "if [ \"{{ExecutionMode}}\" == \"ListAll\" ]; then",
             "  echo \"--- Fetching all instances in region: $REGION ---\"",
             "  aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
-            "elif [ \"{{ExecutionMode}}\" == \"ManageInstance\" ]; then",
-            "  if [ \"{{InstanceId}}\" == \"none\" ] || [ \"{{Action}}\" == \"none\" ]; then",
-            "    echo \"Error: InstanceId and Action parameters are required for ManageInstance mode.\" >&2",
-            "    exit 1",
+            "elif [ \"{{ExecutionMode}}\" == \"StopAllRunning\" ]; then",
+            "  echo \"Finding all running instances to stop...\"",
+            "  instance_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=running\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
+            "  final_ids=$(echo \"$instance_ids\" | tr ' ' '\\n' | grep -v -w -F -f <(echo \"$EXCLUSIONS\") || true)", # Filter out excluded IDs
+            "  if [ -n \"$final_ids\" ]; then",
+            "    echo \"Stopping instances: $final_ids\"",
+            "    aws ec2 stop-instances --region $REGION --instance-ids $final_ids",
+            "  else",
+            "    echo \"No running instances found to stop after exclusions.\"",
             "  fi",
-            "  echo \"Executing action [{{Action}}] on instance [{{InstanceId}}] in region [$REGION]\"",
-            "  aws ec2 {{Action | downcase}}-instances --region $REGION --instance-ids \"{{InstanceId}}\"",
-            "  echo \"Command sent successfully.\"",
+            "elif [ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]; then",
+            "  echo \"Finding all stopped instances to start...\"",
+            "  instance_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=stopped\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
+            "  final_ids=$(echo \"$instance_ids\" | tr ' ' '\\n' | grep -v -w -F -f <(echo \"$EXCLUSIONS\") || true)", # Filter out excluded IDs
+            "  if [ -n \"$final_ids\" ]; then",
+            "    echo \"Starting instances: $final_ids\"",
+            "    aws ec2 start-instances --region $REGION --instance-ids $final_ids",
+            "  else",
+            "    echo \"No stopped instances found to start after exclusions.\"",
+            "  fi",
             "fi"
           ]
         }
