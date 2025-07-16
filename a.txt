@@ -1,63 +1,16 @@
-resource "aws_ssm_document" "linux_unified_manager" {
-  name            = "Unified-Linux-EC2-Manager"
-  document_type   = "Command"
-  document_format = "JSON"
-
-  content = jsonencode({
-    schemaVersion = "2.2"
-    description   = "Linux: Manages EC2 instances with an exception list."
-    parameters = {
-      "ExecutionMode" = {
-        type          = "String"
-        description   = "(Required) The action to perform."
-        allowedValues = ["ListAll", "StartAllStopped", "StopAllRunning"]
-      },
-      "ExcludeInstanceIds" = {
-        type        = "String"
-        description = "(Optional) Comma-separated list of EC2 instance IDs to exclude from start/stop actions."
-        default     = ""
-      }
-    }
-    mainSteps = [
-      {
-        action = "aws:runShellScript"
-        name   = "executeUnifiedTask"
-        inputs = {
-          runCommand = [
-            "#!/bin/bash",
-            "set -e",
-            "",
-            "REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
-            "",
-            "if [[ \"{{ExecutionMode}}\" == \"ListAll\" ]]; then",
-            "  aws ec2 describe-instances --region $REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output table",
-            "elif [[ \"{{ExecutionMode}}\" == \"StopAllRunning\" ]] || [[ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]]; then",
-            "  state_filter='running'",
-            "  if [[ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]]; then state_filter='stopped'; fi",
-            "",
-            "  echo \"Finding all $state_filter instances...\"",
-            "  all_ids=$(aws ec2 describe-instances --region $REGION --filters \"Name=instance-state-name,Values=$state_filter\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
-            "",
-            "  final_ids_to_act_on=''",
-            "  for id in $all_ids; do",
-            "    if ! [[ \",{{ExcludeInstanceIds}},\" =~ \",$id,\" ]]; then",
-            "      final_ids_to_act_on+=\"$id \"",
-            "    else",
-            "      echo \"Excluding instance: $id\"",
-            "    fi",
-            "  done",
-            "",
-            "  if [[ -n \"$final_ids_to_act_on\" ]]; then",
-            "    action_verb=$(echo \"{{ExecutionMode}}\" | sed -e 's/All.*//')",
-            "    echo \"${action_verb}ing instances: $final_ids_to_act_on\"",
-            "    aws ec2 ${action_verb,,}-instances --region $REGION --instance-ids $final_ids_to_act_on",
-            "  else",
-            "    echo \"No instances found to act on after exclusions.\"",
-            "  fi",
-            "fi"
-          ]
-        }
-      }
-    ]
-  })
-}
+│ Error: Invalid reference
+│
+│   on endpoints\ssm.tf line 151, in resource "aws_ssm_document" "ec2_instance_manager":
+│  151:             "    echo \"${action_verb}ing instances: $final_ids_to_act_on\"",
+│
+│ A reference to a resource type must be followed by at least one attribute
+│ access, specifying the resource name.
+╵
+╷
+│ Error: Invalid reference
+│
+│   on endpoints\ssm.tf line 152, in resource "aws_ssm_document" "ec2_instance_manager":
+│  152:             "    aws ec2 ${action_verb}ing-instances --region $REGION --instance-ids $final_ids_to_act_on",
+│
+│ A reference to a resource type must be followed by at least one attribute
+│ access, specifying the resource name.
