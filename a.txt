@@ -1,33 +1,35 @@
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-
-  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
-100    56  100    56    0     0  56000      0 --:--:-- --:--:-- --:--:-- 56000
-*   Trying 169.254.169.254...
-* TCP_NODELAY set
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-
-  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0* Connected to 169.254.169.254 (169.254.169.254) port 80 (#0)
-> GET /latest/meta-data/placement/region HTTP/1.1
-> Host: 169.254.169.254
-> User-Agent: curl/7.61.1
-> Accept: */*
-> X-aws-ec2-metadata-token: AQAEAOJcKBTHpbhJ3-rFciYh-WLzKgATWCtK520jFvcYk5dJauH9mg==
-> 
-< HTTP/1.1 200 OK
-< X-Aws-Ec2-Metadata-Token-Ttl-Seconds: 21600
-< Content-Type: text/plain
-< Accept-Ranges: none
-< Last-Modified: Wed, 16 Jul 2025 15:05:06 GMT
-< Content-Length: 9
-< Date: Wed, 16 Jul 2025 15:45:37 GMT
-< Server: EC2ws
-< Connection: close
-< 
-{ [9 bytes data]
-
-100     9  100     9    0     0   9000      0 --:--:-- --:--:-- --:--:--  9000
-* Closing connection 0
-/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/9ccdd59b-3575-4e6b-98c8-5d6c06bf8311/executeUnifiedTask/_script.sh: line 14: syntax error near unexpected token `('
-failed to run commands: exit status 2
+runCommand = [
+        "#!/bin/bash",
+        "set -e",
+        "",
+        "REGION=$$(curl -s http://169.254.169.254/latest/meta-data/placement/region)",
+        "",
+        "# Create a temporary file for exclusions",
+        "EXCLUSION_FILE=$(mktemp)",
+        "echo \"{{ExcludeInstanceIds}}\" | tr ',' '\\n' > $$EXCLUSION_FILE",
+        "",
+        "if [[ \"{{ExecutionMode}}\" == \"ListAll\" ]]; then",
+        "  aws ec2 describe-instances --region $$REGION --query 'Reservations[*].Instances[*].{ID:InstanceId,State:State.Name,Name:Tags[?Key==`Name`].Value|[0]}' --output text",
+        "elif [[ \"{{ExecutionMode}}\" == \"StopAllRunning\" ]] || [[ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]]; then",
+        "  state_filter='running'",
+        "  if [[ \"{{ExecutionMode}}\" == \"StartAllStopped\" ]]; then state_filter='stopped'; fi",
+        "",
+        "  echo \"Finding all $$state_filter instances...\"",
+        "  all_ids=$$(aws ec2 describe-instances --region $$REGION --filters \"Name=instance-state-name,Values=$$state_filter\" --query 'Reservations[*].Instances[*].InstanceId' --output text)",
+        "",
+        "  # Use the temporary file with grep to filter out excluded IDs",
+        "  final_ids=$$(echo \"$$all_ids\" | tr ' ' '\\n' | grep -v -w -F -f $$EXCLUSION_FILE || true)",
+        "",
+        "  if [[ -n \"$$final_ids\" ]]; then",
+        "    action_verb=$$(echo \"{{ExecutionMode}}\" | sed -e 's/All.*//')",
+        "    echo \"$${action_verb}ing instances: $$final_ids\"",
+        "    cli_action=$$(echo \"$$action_verb\" | tr '[:upper:]' '[:lower:]')",
+        "    aws ec2 \"$$cli_action\"-instances --region $$REGION --instance-ids $$final_ids",
+        "  else",
+        "    echo \"No instances found to act on after exclusions.\"",
+        "  fi",
+        "fi",
+        "",
+        "# Clean up the temporary file",
+        "rm -f $$EXCLUSION_FILE"
+      ]
