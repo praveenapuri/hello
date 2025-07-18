@@ -1,1 +1,129 @@
-Create a new SSM command in in PROD and DR that will back up of the Route53 records and upload it to S3.( each ssm command run should create new file and should not overwrite existing)
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1" # Change to your desired region
+}
+
+# 1. S3 Bucket to store the backups
+resource "aws_s3_bucket" "route53_backups" {
+  bucket = "my-route53-backups-bucket-unique-name" # CHANGE THIS to a globally unique name
+
+  tags = {
+    Name = "Route 53 Backups"
+  }
+}
+
+# 2. IAM Role for the EC2 instance that will run the SSM command
+resource "aws_iam_role" "ssm_route53_backup_role" {
+  name = "SSM-Route53-Backup-Role"
+
+  # Trust policy allowing EC2 to assume this role
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [{
+      Action    = "sts:AssumeRole",
+      Effect    = "Allow",
+      Principal = { Service = "ec2.amazonaws.com" }
+    }]
+  })
+}
+
+# 3. IAM Policy with the required permissions
+resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
+  name = "SSM-Route53-Backup-Permissions"
+  role = aws_iam_role.ssm_route53_backup_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = [
+          "route53:ListHostedZones",
+          "route53:ListResourceRecordSets"
+        ],
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow",
+        Action   = "s3:PutObject",
+        Resource = "${aws_s3_bucket.route53_backups.arn}/*" # Grant write access to the bucket
+      }
+    ]
+  })
+}
+
+# 4. The SSM Command Document
+resource "aws_ssm_document" "route53_backup_doc" {
+  name            = "Backup-Route53-To-S3"
+  document_type   = "Command"
+  document_format = "JSON"
+
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Backs up all Route 53 hosted zone records to a specified S3 bucket."
+    parameters = {
+      "S3BucketName" = {
+        type        = "String",
+        description = "(Required) The name of the S3 bucket to upload backups to."
+      }
+    }
+    mainSteps = [
+      {
+        action = "aws:runShellScript"
+        name   = "backupRoute53"
+        inputs = {
+          runCommand = [
+            "#!/bin/bash",
+            "set -e",
+            "",
+            "# Use IMDSv2 to get the region securely",
+            "TOKEN=$$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")",
+            "REGION=$$(curl -s -H \"X-aws-ec2-metadata-token: $$TOKEN\" \"http://169.254.169.254/latest/meta-data/placement/region\")",
+            "",
+            "TIMESTAMP=$$(date +\"%Y-%m-%d-%H%M%S\")",
+            "BACKUP_DIR=\"/tmp/route53-backup-$$TIMESTAMP\"",
+            "",
+            "echo \"Starting Route 53 backup session: $$TIMESTAMP\"",
+            "mkdir -p \"$$BACKUP_DIR\"",
+            "",
+            "# Get all hosted zones (ID and Name)",
+            "HOSTED_ZONES_DATA=$$(aws route53 list-hosted-zones --query 'HostedZones[].[Id, Name]' --output text --region $$REGION)",
+            "",
+            "if [ -z \"$$HOSTED_ZONES_DATA\" ]; then",
+            "    echo \"No hosted zones found.\"",
+            "    exit 0",
+            "fi",
+            "",
+            "# Process each zone",
+            "echo \"$$HOSTED_ZONES_DATA\" | while read -r ZONE_ID ZONE_NAME; do",
+            "    # Sanitize zone name for a valid filename",
+            "    FILENAME=$$(echo \"$$ZONE_NAME\" | sed 's/\\.$//' | tr '.' '_')",
+            "    BACKUP_FILE_PATH=\"$$BACKUP_DIR/$$FILENAME.json\"",
+            "",
+            "    echo \"Backing up zone: $$ZONE_NAME ($$ZONE_ID)\"",
+            "    aws route53 list-resource-record-sets --hosted-zone-id \"$$ZONE_ID\" --region $$REGION > \"$$BACKUP_FILE_PATH\"",
+            "",
+            "    # Upload to S3 in a timestamped folder",
+            "    S3_KEY=\"route53-backups/$$TIMESTAMP/$$FILENAME.json\"",
+            "    echo \"Uploading to s3://{{S3BucketName}}/$$S3_KEY\"",
+            "    aws s3 cp \"$$BACKUP_FILE_PATH\" \"s3://{{S3BucketName}}/$$S3_KEY\" --region $$REGION",
+            "done",
+            "",
+            "echo \"Cleaning up temporary directory: $$BACKUP_DIR\"",
+            "rm -rf \"$$BACKUP_DIR\"",
+            "",
+            "echo \"Route 53 backup complete.\""
+          ]
+        }
+      }
+    ]
+  })
+}
