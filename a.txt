@@ -137,3 +137,6 @@ resource "aws_ssm_document" "route53_backup_doc" {
     , data.aws_s3_bucket.route53_backups.bucket, data.aws_s3_bucket.route53_backups.bucket
   )
 }
+
+
+│ Error: creating SSM Document (epic-payer-dev-backup-Route53-To-S3): operation error SSM: CreateDocument, https response error StatusCode: 400, RequestID: ac2f6654-f7ce-42b0-96c2-393ac533586f, InvalidDocumentContent: JSON not well-formed. at Line: 30, Column: 40
