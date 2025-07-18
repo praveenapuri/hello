@@ -1,50 +1,20 @@
-resource "aws_ssm_document" "windows_bulk_manager" {
-  name            = "Start-Stop-All-Windows-Instances"
-  document_type   = "Command"
-  document_format = "JSON"
+# Variable to hold the name of the bucket you want to delete.
+variable "bucket_to_delete" {
+  description = "The name of the S3 bucket to delete."
+  type        = string
+}
 
-  content = jsonencode({
-    schemaVersion = "2.2"
-    description   = "Starts all stopped Windows instances or stops all running Windows instances in a region."
-    parameters = {
-      "Action" = {
-        type          = "String"
-        description   = "(Required) Choose to 'Start' stopped instances or 'Stop' running instances."
-        allowedValues = ["Start", "Stop"]
-      }
-    }
-    mainSteps = [
-      {
-        action = "aws:runPowerShellScript"
-        name   = "executeBulkAction"
-        inputs = {
-          runCommand = [
-            "$ErrorActionPreference = 'Stop'",
-            "$Region = (Invoke-RestMethod -uri http://169.254.169.254/latest/meta-data/placement/region)",
-            "",
-            "if ('{{Action}}' -eq 'Stop') {",
-            "    Write-Host 'Finding all running Windows instances to stop...'",
-            "    $instanceIds = (aws ec2 describe-instances --region $Region --filters 'Name=platform,Values=windows' 'Name=instance-state-name,Values=running' --query 'Reservations[*].Instances[*].InstanceId' --output text)",
-            "    if ($instanceIds) {",
-            "        Write-Host \"Stopping instances: $instanceIds\"",
-            "        aws ec2 stop-instances --region $Region --instance-ids $instanceIds",
-            "    } else {",
-            "        Write-Host 'No running Windows instances found.'",
-            "    }",
-            "}",
-            "elseif ('{{Action}}' -eq 'Start') {",
-            "    Write-Host 'Finding all stopped Windows instances to start...'",
-            "    $instanceIds = (aws ec2 describe-instances --region $Region --filters 'Name=platform,Values=windows' 'Name=instance-state-name,Values=stopped' --query 'Reservations[*].Instances[*].InstanceId' --output text)",
-            "    if ($instanceIds) {",
-            "        Write-Host \"Starting instances: $instanceIds\"",
-            "        aws ec2 start-instances --region $Region --instance-ids $instanceIds",
-            "    } else {",
-            "        Write-Host 'No stopped Windows instances found.'",
-            "    }",
-            "}"
-          ]
-        }
-      }
-    ]
-  })
+# This null_resource acts as a trigger for the deletion command.
+# The command only runs when this resource is destroyed.
+resource "null_resource" "s3_bucket_deleter" {
+
+  # The provisioner runs a command on the machine executing Terraform.
+  provisioner "local-exec" {
+    # 'when = destroy' ensures this only runs during 'terraform destroy'.
+    when = destroy
+
+    # The command to run. 'aws s3 rb --force' removes all objects
+    # and then deletes the bucket itself.
+    command = "aws s3 rb s3://${var.bucket_to_delete} --force"
+  }
 }
