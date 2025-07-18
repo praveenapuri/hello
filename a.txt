@@ -11,13 +11,9 @@ provider "aws" {
   region = "us-east-1" # Change to your desired region
 }
 
-# 1. S3 Bucket to store the backups
-resource "aws_s3_bucket" "route53_backups" {
-  bucket = "my-route53-backups-bucket-unique-name" # CHANGE THIS to a globally unique name
-
-  tags = {
-    Name = "Route 53 Backups"
-  }
+# 1. Reference your existing S3 Bucket
+data "aws_s3_bucket" "route53_backups" {
+  bucket = "name-of-your-existing-s3-bucket" # CHANGE THIS to the name of your bucket
 }
 
 # 2. IAM Role for the EC2 instance that will run the SSM command
@@ -54,7 +50,7 @@ resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
       {
         Effect   = "Allow",
         Action   = "s3:PutObject",
-        Resource = "${aws_s3_bucket.route53_backups.arn}/*" # Grant write access to the bucket
+        Resource = "${data.aws_s3_bucket.route53_backups.arn}/*" # Grant write access to the bucket
       }
     ]
   })
@@ -136,6 +132,6 @@ resource "aws_ssm_document" "route53_backup_doc" {
       ]
     }
     EOT
-    , aws_s3_bucket.route53_backups.bucket, aws_s3_bucket.route53_backups.bucket
+    , data.aws_s3_bucket.route53_backups.bucket, data.aws_s3_bucket.route53_backups.bucket
   )
 }
