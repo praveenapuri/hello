@@ -137,3 +137,8 @@ resource "aws_ssm_document" "route53_backup_doc" {
     , data.aws_s3_bucket.route53_backups.bucket, data.aws_s3_bucket.route53_backups.bucket
   )
 }
+
+
+
+│ Call to function "format" failed: not enough arguments for "%Y" at 1402:
+│ need index 3 but have 2 total.
