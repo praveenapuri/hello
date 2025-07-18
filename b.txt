@@ -1,23 +1,2 @@
-# Assume your SSM document is already created
-data "aws_ssm_document" "linux_manager" {
-  name = "Linux-Multi-Purpose-EC2-Manager"
-}
-
-# The association links the document to a specific target
-resource "aws_ssm_association" "run_on_specific_instance" {
-  name = data.aws_ssm_document.linux_manager.name
-
-  # --- This block defines the single target ---
-  targets {
-    key    = "InstanceIds"
-    values = ["i-0123456789abcdef0"] # <-- Hardcode your specific instance ID here
-  }
-
-  # --- Optional: Run on a schedule ---
-  schedule_expression = "rate(30 minutes)"
-
-  # --- Provide parameters for the document ---
-  parameters = {
-    ExecutionMode = "ListInstances"
-  }
-}
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/c28684a8-6927-4a7b-99c1-cbb25cf37461/backupRoute53/_script.sh: line 20: syntax error near unexpected token `('
+failed to run commands: exit status 2
