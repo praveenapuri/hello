@@ -11,21 +11,26 @@ provider "aws" {
   region = "us-east-1" # Change to your desired region
 }
 
-# 1. Create a new S3 Bucket with a 30-day lifecycle rule
+# 1. Create a new S3 Bucket
 resource "aws_s3_bucket" "route53_backups" {
   bucket = "my-route53-backups-bucket-unique-name" # CHANGE THIS to a globally unique name
 
-  lifecycle_rule {
-    id      = "expire-backups"
-    enabled = true
+  tags = {
+    Name = "Route 53 Backups"
+  }
+}
+
+# New, non-deprecated resource for lifecycle configuration
+resource "aws_s3_bucket_lifecycle_configuration" "route53_backups_lifecycle" {
+  bucket = aws_s3_bucket.route53_backups.id
+
+  rule {
+    id     = "expire-backups"
+    status = "Enabled"
 
     expiration {
       days = 30
     }
-  }
-
-  tags = {
-    Name = "Route 53 Backups"
   }
 }
 
