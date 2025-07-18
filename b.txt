@@ -1,2 +1,4 @@
-/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/c28684a8-6927-4a7b-99c1-cbb25cf37461/backupRoute53/_script.sh: line 20: syntax error near unexpected token `('
-failed to run commands: exit status 2
+jq: error: syntax error, unexpected INVALID_CHARACTER (Unix shell quoting issues?) at <top-level>, line 1:
+{ "Comment": "Restore from backup 2025-07-18-164912 for epic-dev.aws.evernorthcloud.com.", "Changes": .ResourceRecordSets | map(select(.Name == $zone_name and (.Type == \"NS\" or .Type == \"SOA\") | not)) | map({ "Action": "UPSERT", "ResourceRecordSet": . }) }                                                                                                                                                                         
+jq: 1 compile error
+failed to run commands: exit status 3
