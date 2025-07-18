@@ -61,14 +61,14 @@ resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
 }
 
 # 4. The SSM Command Document
-resource "aws_ssm_document" "route53_backup_doc" {
+resource "aws_sm_document" "route53_backup_doc" {
   name            = "Backup-Route53-To-S3"
   document_type   = "Command"
   document_format = "JSON"
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "Backs up all Route 53 hosted zone records to a specified S3 bucket."
+    description   = "Backs up all Route 53 hosted zone records to a specified S3 bucket in a restorable format."
     parameters = {
       "S3BucketName" = {
         type        = "String",
@@ -84,6 +84,19 @@ resource "aws_ssm_document" "route53_backup_doc" {
             "#!/bin/bash",
             "set -e",
             "",
+            "# Check for jq and install if not present",
+            "if ! command -v jq &> /dev/null; then",
+            "    echo \"jq not found. Attempting to install...\"",
+            "    if [ -f /etc/redhat-release ]; then",
+            "        sudo yum install -y jq",
+            "    elif [ -f /etc/lsb-release ]; then",
+            "        sudo apt-get update && sudo apt-get install -y jq",
+            "    else",
+            "        echo \"Unsupported OS for automatic jq installation. Please install jq manually.\" >&2",
+            "        exit 1",
+            "    fi",
+            "fi",
+            "",
             "# Use IMDSv2 to get the region securely",
             "TOKEN=$$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")",
             "REGION=$$(curl -s -H \"X-aws-ec2-metadata-token: $$TOKEN\" \"http://169.254.169.254/latest/meta-data/placement/region\")",
@@ -94,7 +107,6 @@ resource "aws_ssm_document" "route53_backup_doc" {
             "echo \"Starting Route 53 backup session: $$TIMESTAMP\"",
             "mkdir -p \"$$BACKUP_DIR\"",
             "",
-            "# Get all hosted zones (ID and Name)",
             "HOSTED_ZONES_DATA=$$(aws route53 list-hosted-zones --query 'HostedZones[].[Id, Name]' --output text --region $$REGION)",
             "",
             "if [ -z \"$$HOSTED_ZONES_DATA\" ]; then",
@@ -102,16 +114,17 @@ resource "aws_ssm_document" "route53_backup_doc" {
             "    exit 0",
             "fi",
             "",
-            "# Process each zone",
             "echo \"$$HOSTED_ZONES_DATA\" | while read -r ZONE_ID ZONE_NAME; do",
-            "    # Sanitize zone name for a valid filename",
             "    FILENAME=$$(echo \"$$ZONE_NAME\" | sed 's/\\.$//' | tr '.' '_')",
             "    BACKUP_FILE_PATH=\"$$BACKUP_DIR/$$FILENAME.json\"",
             "",
-            "    echo \"Backing up zone: $$ZONE_NAME ($$ZONE_ID)\"",
-            "    aws route53 list-resource-record-sets --hosted-zone-id \"$$ZONE_ID\" --region $$REGION > \"$$BACKUP_FILE_PATH\"",
+            "    echo \"Backing up zone: $$ZONE_NAME ($$ZONE_ID) in a restorable format\"",
+            "    RAW_RECORDS=$$(aws route53 list-resource-record-sets --hosted-zone-id \"$$ZONE_ID\" --region $$REGION)",
             "",
-            "    # Upload to S3 in a timestamped folder",
+            "    # Use jq to transform the records into a restorable format for change-resource-record-sets",
+            "    # It filters out the apex NS and SOA records, which should not be restored.",
+            "    echo \"$$RAW_RECORDS\" | jq --arg zone_name \"$$ZONE_NAME\" '{ \"Comment\": \"Restore records from backup $$TIMESTAMP for zone $$ZONE_NAME\", \"Changes\": .ResourceRecordSets | map(select(.Name == $$zone_name and (.Type == \"NS\" or .Type == \"SOA\") | not)) | map({ \"Action\": \"UPSERT\", \"ResourceRecordSet\": . }) }' > \"$$BACKUP_FILE_PATH\"",
+            "",
             "    S3_KEY=\"route53-backups/$$TIMESTAMP/$$FILENAME.json\"",
             "    echo \"Uploading to s3://{{S3BucketName}}/$$S3_KEY\"",
             "    aws s3 cp \"$$BACKUP_FILE_PATH\" \"s3://{{S3BucketName}}/$$S3_KEY\" --region $$REGION",
