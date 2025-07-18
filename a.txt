@@ -58,7 +58,7 @@ resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
 
 # 4. The SSM Command Document
 resource "aws_ssm_document" "route53_backup_doc" {
-  name            = "Backup-Route53-To-S3"
+  name            = "Backup-Route53-To-S3-Restorable"
   document_type   = "Command"
   document_format = "JSON"
 
@@ -115,6 +115,8 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "    echo \\"Backing up zone: $$ZONE_NAME ($$ZONE_ID) in a restorable format\\"",
               "    RAW_RECORDS=$$(aws route53 list-resource-record-sets --hosted-zone-id \\"$$ZONE_ID\\" --region $$REGION)",
               "",
+              "    # Use jq to transform the records into a restorable format for change-resource-record-sets",
+              "    # It filters out the apex NS and SOA records, which should not be restored.",
               "    echo \\"$$RAW_RECORDS\\" | jq --arg zone_name \\"$$ZONE_NAME\\" '{ \\"Comment\\": \\"Restore records from backup $$TIMESTAMP for zone $$ZONE_NAME\\", \\"Changes\\": .ResourceRecordSets | map(select(.Name == $$zone_name and (.Type == \\"NS\\" or .Type == \\"SOA\\") | not)) | map({ \\"Action\\": \\"UPSERT\\", \\"ResourceRecordSet\\": . }) }' > \\"$$BACKUP_FILE_PATH\\"",
               "",
               "    S3_KEY=\\"route53-backups/$$TIMESTAMP/$$FILENAME.json\\"",
