@@ -1,71 +1,7 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1" # Change to your desired region
-}
-
-# 1. Reference your existing S3 Bucket
-data "aws_s3_bucket" "route53_backups" {
-  bucket = "name-of-your-existing-s3-bucket" # CHANGE THIS to the name of your bucket
-}
-
-# 2. IAM Role for the EC2 instance that will run the SSM command
-resource "aws_iam_role" "ssm_route53_backup_role" {
-  name = "SSM-Route53-Backup-Role"
-
-  # Trust policy allowing EC2 to assume this role
-  assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [{
-      Action    = "sts:AssumeRole",
-      Effect    = "Allow",
-      Principal = { Service = "ec2.amazonaws.com" }
-    }]
-  })
-}
-
-# 3. IAM Policy with the required permissions
-resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
-  name = "SSM-Route53-Backup-Permissions"
-  role = aws_iam_role.ssm_route53_backup_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect   = "Allow",
-        Action   = [
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets"
-        ],
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow",
-        Action   = "s3:PutObject",
-        Resource = "${data.aws_s3_bucket.route53_backups.arn}/*" # Grant write access to the bucket
-      }
-    ]
-  })
-}
-
-# 4. The SSM Command Document
-resource "aws_ssm_document" "route53_backup_doc" {
-  name            = "Backup-Route53-To-S3-Restorable"
-  document_type   = "Command"
-  document_format = "JSON"
-
- content = format(<<-EOT
+ content = <<-EOT
     {
       "schemaVersion": "2.2",
-      "description": "Backs up all Route 53 hosted zone records to the S3 bucket %s in a restorable format.",
+      "description": "Backs up all Route 53 hosted zone records to the S3 bucket ${data.aws_s3_bucket.route53_backups.bucket} in a restorable format.",
       "parameters": {},
       "mainSteps": [
         {
@@ -76,7 +12,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "#!/bin/bash",
               "set -e",
               "",
-              "S3_BUCKET_NAME=\"%s\"",
+              "S3_BUCKET_NAME=\"${data.aws_s3_bucket.route53_backups.bucket}\"",
               "",
               "# Check for jq and install if not present",
               "if ! command -v jq &> /dev/null; then",
@@ -92,51 +28,46 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "fi",
               "",
               "# Use IMDSv2 to get the region securely",
-              "TOKEN=$$(curl -s -X PUT \\"http://169.254.169.254/latest/api/token\\" -H \\"X-aws-ec2-metadata-token-ttl-seconds: 21600\\")",
-              "REGION=$$(curl -s -H \\"X-aws-ec2-metadata-token: $$TOKEN\\" \\"http://169.254.169.254/latest/meta-data/placement/region\\")",
+              "TOKEN=$$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")",
+              "REGION=$$(curl -s -H \"X-aws-ec2-metadata-token: $$TOKEN\" \"http://169.254.169.254/latest/meta-data/placement/region\")",
               "",
-              "TIMESTAMP=$$(date +\\"%%Y-%%m-%%d-%%H%%M%%S\\")",
-              "BACKUP_DIR=\\"/tmp/route53-backup-$$TIMESTAMP\\"",
+              "TIMESTAMP=$$(date +\"%Y-%m-%d-%H%M%S\")",
+              "BACKUP_DIR=\"/tmp/route53-backup-$$TIMESTAMP\"",
               "",
-              "echo \\"Starting Route 53 backup session: $$TIMESTAMP\\"",
-              "mkdir -p \\"$$BACKUP_DIR\\"",
+              "echo \"Starting Route 53 backup session: $$TIMESTAMP\"",
+              "mkdir -p \"$$BACKUP_DIR\"",
               "",
               "HOSTED_ZONES_DATA=$$(aws route53 list-hosted-zones --query 'HostedZones[].[Id, Name]' --output text --region $$REGION)",
               "",
-              "if [ -z \\"$$HOSTED_ZONES_DATA\\" ]; then",
-              "    echo \\"No hosted zones found.\\"",
+              "if [ -z \"$$HOSTED_ZONES_DATA\" ]; then",
+              "    echo \"No hosted zones found.\"",
               "    exit 0",
               "fi",
               "",
-              "echo \\"$$HOSTED_ZONES_DATA\\" | while read -r ZONE_ID ZONE_NAME; do",
-              "    FILENAME=$$(echo \\"$$ZONE_NAME\\" | sed 's/\\\\.$//' | tr '.' '_')",
-              "    BACKUP_FILE_PATH=\\"$$BACKUP_DIR/$$FILENAME.json\\"",
+              "echo \"$$HOSTED_ZONES_DATA\" | while read -r ZONE_ID ZONE_NAME; do",
+              "    FILENAME=$$(echo \"$$ZONE_NAME\" | sed 's/\\\\.$//' | tr '.' '_')",
+              "    BACKUP_FILE_PATH=\"$$BACKUP_DIR/$$FILENAME.json\"",
               "",
-              "    echo \\"Backing up zone: $$ZONE_NAME ($$ZONE_ID) in a restorable format\\"",
-              "    RAW_RECORDS=$$(aws route53 list-resource-record-sets --hosted-zone-id \\"$$ZONE_ID\\" --region $$REGION)",
+              "    echo \"Backing up zone: $$ZONE_NAME ($$ZONE_ID) in a restorable format\"",
+              "    RAW_RECORDS=$$(aws route53 list-resource-record-sets --hosted-zone-id \"$$ZONE_ID\" --region $$REGION)",
               "",
               "    # Use jq to transform the records into a restorable format for change-resource-record-sets",
               "    # It filters out the apex NS and SOA records, which should not be restored.",
-              "    echo \\"$$RAW_RECORDS\\" | jq --arg zone_name \\"$$ZONE_NAME\\" '{ \\"Comment\\": \\"Restore records from backup $$TIMESTAMP for zone $$ZONE_NAME\\", \\"Changes\\": .ResourceRecordSets | map(select(.Name == $$zone_name and (.Type == \\"NS\\" or .Type == \\"SOA\\") | not)) | map({ \\"Action\\": \\"UPSERT\\", \\"ResourceRecordSet\\": . }) }' > \\"$$BACKUP_FILE_PATH\\"",
+              "    echo \"$$RAW_RECORDS\" | jq --arg zone_name \"$$ZONE_NAME\" '{ \"Comment\": \"Restore records from backup $$TIMESTAMP for zone $$ZONE_NAME\", \"Changes\": .ResourceRecordSets | map(select(.Name == $$zone_name and (.Type == \"NS\" or .Type == \"SOA\") | not)) | map({ \"Action\": \"UPSERT\", \"ResourceRecordSet\": . }) }' > \"$$BACKUP_FILE_PATH\"",
               "",
-              "    S3_KEY=\\"route53-backups/$$TIMESTAMP/$$FILENAME.json\\"",
-              "    echo \\"Uploading to s3://$$S3_BUCKET_NAME/$$S3_KEY\\"",
-              "    aws s3 cp \\"$$BACKUP_FILE_PATH\\" \\"s3://$$S3_BUCKET_NAME/$$S3_KEY\\" --region $$REGION",
+              "    S3_KEY=\"route53-backups/$$TIMESTAMP/$$FILENAME.json\"",
+              "    echo \"Uploading to s3://$$S3_BUCKET_NAME/$$S3_KEY\"",
+              "    aws s3 cp \"$$BACKUP_FILE_PATH\" \"s3://$$S3_BUCKET_NAME/$$S3_KEY\" --region $$REGION",
               "done",
               "",
-              "echo \\"Cleaning up temporary directory: $$BACKUP_DIR\\"",
-              "rm -rf \\"$$BACKUP_DIR\\"",
+              "echo \"Cleaning up temporary directory: $$BACKUP_DIR\"",
+              "rm -rf \"$$BACKUP_DIR\"",
               "",
-              "echo \\"Route 53 backup complete.\\""
+              "echo \"Route 53 backup complete.\""
             ]
           }
         }
       ]
     }
     EOT
-    , data.aws_s3_bucket.route53_backups.bucket, data.aws_s3_bucket.route53_backups.bucket
-  )
 }
-
-
-│ Error: creating SSM Document (epic-payer-dev-backup-Route53-To-S3): operation error SSM: CreateDocument, https response error StatusCode: 400, RequestID: ac2f6654-f7ce-42b0-96c2-393ac533586f, InvalidDocumentContent: JSON not well-formed. at Line: 30, Column: 40
