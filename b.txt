@@ -1,3 +1,2 @@
-
-An error occurred (NoSuchHostedZone) when calling the ListResourceRecordSets operation: No hosted zone found with ID: 272018ZONE_ID
-failed to run commands: exit status 254
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/48fd0994-02c9-41d2-a8e0-22700b97df16/backupRoute53/_script.sh: line 21: syntax error near unexpected token `('
+failed to run commands: exit status 2
