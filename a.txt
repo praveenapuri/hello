@@ -107,7 +107,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "fi",
               "",
               "echo \"$$HOSTED_ZONES_DATA\" | while read -r RAW_ZONE_ID ZONE_NAME; do",
-              "    ZONE_ID=`echo \"$$RAW_ZONE_ID\" | sed 's/\\/hostedzone\\///'`",
+              "    ZONE_ID=`echo \"$$RAW_ZONE_ID\" | cut -d'/' -f3`",
               "    TIMESTAMP=`date +%Y-%m-%d-%H%M%S`",
               "    FILENAME_BASE=`echo \"$$ZONE_NAME\" | sed 's/\\\\.$//' | tr '.' '_'`",
               "    FILENAME=\"$${FILENAME_BASE}_$${TIMESTAMP}.json\"",
