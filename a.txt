@@ -15,7 +15,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
           "name": "backupRoute53",
           "inputs": {
             "runCommand": [
-              "#!/bin/sh",
+              "#!/bin/bash",
               "set -e",
               "",
               "S3_BUCKET_NAME=\"${data.aws_s3_bucket.route53_backups.bucket}\"",
@@ -52,7 +52,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "    TIMESTAMP=$$(date +%Y-%m-%d-%H%M%S)",
               "    FILENAME_BASE=$$(echo \"$$ZONE_NAME\" | sed 's/\\\\.$//' | tr '.' '_')",
               "    FILENAME=\"$${FILENAME_BASE}_$${TIMESTAMP}.json\"",
-              "    RAW_RECORDS_FILE=\"$$BACKUP_DIR/$$FILENAME-raw.json\"",
+              "    RAW_RECORDS_FILE=\"$$BACKUP_DIR/$${FILENAME_BASE}-raw.json\"",
               "    BACKUP_FILE_PATH=\"$$BACKUP_DIR/$$FILENAME\"",
               "",
               "    echo \"Backing up zone: $$ZONE_NAME ($$ZONE_ID) to file $$FILENAME\"",
