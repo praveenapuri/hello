@@ -1,2 +1,25 @@
-/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/0a45d33c-e042-4367-be98-7d80bd4a88f2/backupRoute53/_script.sh: line 21: syntax error near unexpected token `('
-failed to run commands: exit status 2
+Error: Invalid reference
+│
+│   on endpoints\ssm.tf line 222, in resource "aws_ssm_document" "route53_backup_doc":
+│  222:               "    FILENAME=\"${FILENAME_BASE}_${TIMESTAMP}.json\"",
+│
+│ A reference to a resource type must be followed by at least one attribute
+│ access, specifying the resource name.
+╵
+╷
+│ Error: Invalid reference
+│
+│   on endpoints\ssm.tf line 222, in resource "aws_ssm_document" "route53_backup_doc":
+│  222:               "    FILENAME=\"${FILENAME_BASE}_${TIMESTAMP}.json\"",
+│
+│ A reference to a resource type must be followed by at least one attribute
+│ access, specifying the resource name.
+╵
+╷
+│ Error: Invalid reference
+│
+│   on endpoints\ssm.tf line 223, in resource "aws_ssm_document" "route53_backup_doc":
+│  223:               "    RAW_RECORDS_FILE=\"$BACKUP_DIR/${FILENAME_BASE}-raw.json\"",
+│
+│ A reference to a resource type must be followed by at least one attribute
+│ access, specifying the resource name.
