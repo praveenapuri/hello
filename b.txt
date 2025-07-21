@@ -1,2 +1,3 @@
-/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/3202178d-7c6a-4695-9c05-67374bdc11ef/backupRoute53/_script.sh: line 36: unexpected EOF while looking for matching ``'
-failed to run commands: exit status 2
+
+An error occurred (NoSuchHostedZone) when calling the ListResourceRecordSets operation: No hosted zone found with ID: 272018ZONE_ID
+failed to run commands: exit status 254
