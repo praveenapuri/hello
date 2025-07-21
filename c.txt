@@ -1,64 +1,6 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1" # Change to your desired region
-}
-
-# 1. Reference your existing S3 Bucket
-data "aws_s3_bucket" "route53_backups" {
-  bucket = "name-of-your-existing-s3-bucket" # CHANGE THIS to the name of your bucket
-}
-
-# 2. IAM Role for the EC2 instance that will run the SSM command
-resource "aws_iam_role" "ssm_route53_backup_role" {
-  name = "SSM-Route53-Backup-Role"
-
-  # Trust policy allowing EC2 to assume this role
-  assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [{
-      Action    = "sts:AssumeRole",
-      Effect    = "Allow",
-      Principal = { Service = "ec2.amazonaws.com" }
-    }]
-  })
-}
-
-# 3. IAM Policy with the required permissions
-resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
-  name = "SSM-Route53-Backup-Permissions"
-  role = aws_iam_role.ssm_route53_backup_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect   = "Allow",
-        Action   = [
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets"
-        ],
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow",
-        Action   = "s3:PutObject",
-        Resource = "${data.aws_s3_bucket.route53_backups.arn}/*" # Grant write access to the bucket
-      }
-    ]
-  })
-}
-
-# 4. The SSM Command Document - Corrected and POSIX-compliant
+# SSM Command to backup route53 records to S3
 resource "aws_ssm_document" "route53_backup_doc" {
-  name            = "Backup-Route53-To-S3-Restorable-Single-Folder"
+  name            = "epic-payer-${var.env}-backup-Route53-To-S3"
   document_type   = "Command"
   document_format = "JSON"
 
@@ -94,8 +36,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "",
               "# Use IMDSv2 to get the region securely",
               "TOKEN=`curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\"`",
-              "REGION=`curl -s -H \"X-aws-ec2-metadata-token: $$TOKEN\" \"http://169.254.169.254/latest/meta-data/placement/region\"`",
-              "",
+              "REGION=`curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" \"http://169.254.169.254/latest/meta-data/placement/region\"`",              "",
               "BACKUP_DIR=\"/tmp/route53-backup-$$`",
               "mkdir -p \"$$BACKUP_DIR\"",
               "",
