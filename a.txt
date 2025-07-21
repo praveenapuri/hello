@@ -1,4 +1,4 @@
-4. The SSM Command Document - Corrected and Robust
+ 4. The SSM Command Document - Corrected and Robust
 resource "aws_ssm_document" "route53_backup_doc" {
   name            = "Backup-Route53-To-S3-Restorable"
   document_type   = "Command"
@@ -68,9 +68,14 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "    COMMENT_TEXT=\"Restore from backup $$TIMESTAMP for $$ZONE_NAME\"",
               "    jq --arg zone_name \"$$ZONE_NAME\" --arg comment \"$$COMMENT_TEXT\" '{ \"Comment\": $$comment, \"Changes\": [ .ResourceRecordSets[] | select(.Name == $$zone_name and (.Type == \"NS\" or .Type == \"SOA\") | not) | { \"Action\": \"UPSERT\", \"ResourceRecordSet\": . } ] }' \"$$RAW_RECORDS_FILE\" > \"$$BACKUP_FILE_PATH\"",
               "",
-              "    S3_KEY=\"$$S3_FOLDER/$$FILENAME\"",
-              "    echo \"Uploading to s3://$$S3_BUCKET_NAME/$$S3_KEY\"",
-              "    aws s3 cp \"$$BACKUP_FILE_PATH\" \"s3://$$S3_BUCKET_NAME/$$S3_KEY\" --region $$REGION",
+              "    # Check if the generated backup file has any changes before uploading",
+              "    if [ `jq '.Changes | length' \"$$BACKUP_FILE_PATH\"` -gt 0 ]; then",
+              "        S3_KEY=\"$$S3_FOLDER/$$FILENAME\"",
+              "        echo \"Uploading to s3://$$S3_BUCKET_NAME/$$S3_KEY\"",
+              "        aws s3 cp \"$$BACKUP_FILE_PATH\" \"s3://$$S3_BUCKET_NAME/$$S3_KEY\" --region $$REGION",
+              "    else",
+              "        echo \"Zone $$ZONE_NAME contains no records to back up (excluding default NS/SOA). Skipping upload.\"",
+              "    fi",
               "done",
               "",
               "echo \"Cleaning up temporary directory: $$BACKUP_DIR\"",
