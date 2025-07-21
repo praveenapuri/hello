@@ -1,62 +1,4 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1" # Change to your desired region
-}
-
-# 1. Reference your existing S3 Bucket
-data "aws_s3_bucket" "route53_backups" {
-  bucket = "name-of-your-existing-s3-bucket" # CHANGE THIS to the name of your bucket
-}
-
-# 2. IAM Role for the EC2 instance that will run the SSM command
-resource "aws_iam_role" "ssm_route53_backup_role" {
-  name = "SSM-Route53-Backup-Role"
-
-  # Trust policy allowing EC2 to assume this role
-  assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [{
-      Action    = "sts:AssumeRole",
-      Effect    = "Allow",
-      Principal = { Service = "ec2.amazonaws.com" }
-    }]
-  })
-}
-
-# 3. IAM Policy with the required permissions
-resource "aws_iam_role_policy" "ssm_route53_backup_policy" {
-  name = "SSM-Route53-Backup-Permissions"
-  role = aws_iam_role.ssm_route53_backup_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
-      {
-        Effect   = "Allow",
-        Action   = [
-          "route53:ListHostedZones",
-          "route53:ListResourceRecordSets"
-        ],
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow",
-        Action   = "s3:PutObject",
-        Resource = "${data.aws_s3_bucket.route53_backups.arn}/*" # Grant write access to the bucket
-      }
-    ]
-  })
-}
-
-# 4. The SSM Command Document - Corrected and POSIX-compliant
+4. The SSM Command Document - Corrected and Robust
 resource "aws_ssm_document" "route53_backup_doc" {
   name            = "Backup-Route53-To-S3-Restorable"
   document_type   = "Command"
@@ -99,15 +41,20 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "BACKUP_DIR=\"/tmp/route53-backup-$$PID\"",
               "mkdir -p \"$$BACKUP_DIR\"",
               "",
-              "HOSTED_ZONES_DATA=`aws route53 list-hosted-zones --query 'HostedZones[].[Id, Name]' --output text --region $$REGION`",
+              "# Get hosted zones as JSON for reliable parsing",
+              "HOSTED_ZONES_JSON=`aws route53 list-hosted-zones --query 'HostedZones' --output json --region $$REGION`",
               "",
-              "if [ -z \"$$HOSTED_ZONES_DATA\" ]; then",
+              "if [ -z \"$$HOSTED_ZONES_JSON\" ] || [ \"$$HOSTED_ZONES_JSON\" = \"[]\" ]; then",
               "    echo \"No hosted zones found.\"",
               "    exit 0",
               "fi",
               "",
-              "echo \"$$HOSTED_ZONES_DATA\" | while read -r RAW_ZONE_ID ZONE_NAME; do",
+              "# Loop through each zone using jq for safety",
+              "echo \"$$HOSTED_ZONES_JSON\" | jq -c '.[]' | while read -r zone_json; do",
+              "    RAW_ZONE_ID=`echo \"$$zone_json\" | jq -r '.Id'`",
+              "    ZONE_NAME=`echo \"$$zone_json\" | jq -r '.Name'`",
               "    ZONE_ID=`echo \"$$RAW_ZONE_ID\" | cut -d'/' -f3`",
+              "",
               "    TIMESTAMP=`date +%Y-%m-%d-%H%M%S`",
               "    FILENAME_BASE=`echo \"$$ZONE_NAME\" | sed 's/\\\\.$//' | tr '.' '_'`",
               "    FILENAME=\"$${FILENAME_BASE}_$${TIMESTAMP}.json\"",
