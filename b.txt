@@ -1,16 +1,2 @@
-Error: Invalid reference
-│
-│   on endpoints\ssm.tf line 221, in resource "aws_ssm_document" "route53_backup_doc":
-│  221:               "    FILENAME=\"${FILENAME_BASE}_${TIMESTAMP}.json\"",
-│
-│ A reference to a resource type must be followed by at least one attribute
-│ access, specifying the resource name.
-╵
-╷
-│ Error: Invalid reference
-│
-│   on endpoints\ssm.tf line 221, in resource "aws_ssm_document" "route53_backup_doc":
-│  221:               "    FILENAME=\"${FILENAME_BASE}_${TIMESTAMP}.json\"",
-│
-│ A reference to a resource type must be followed by at least one attribute
-│ access, specifying the resource name.
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/bb122876-f640-48fa-a5b2-45d929232fc5/backupRoute53/_script.sh: line 35: unexpected EOF while looking for matching ``'
+failed to run commands: exit status 2
