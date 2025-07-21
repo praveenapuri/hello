@@ -1,5 +1,10 @@
---- HOSTED ZONES DATA ---
-341767HOSTED_ZONES_JSON
--------------------------
-Cleaning up temporary directory: 341767BACKUP_DIR
+--- SCRIPT START ---
+Fetching IMDSv2 token...
+Fetching region...
+Region identified as: 351039REGION
+Listing hosted zones...
+--- RAW HOSTED ZONES DATA ---
+351039HOSTED_ZONES_JSON
+---------------------------
+Cleaning up temporary directory: 351039BACKUP_DIR
 Route 53 backup complete.
