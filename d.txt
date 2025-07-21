@@ -1,4 +1,3 @@
-# 4. The SSM Command Document - Corrected and Robust
 resource "aws_ssm_document" "route53_backup_doc" {
   name            = "Backup-Route53-To-S3-Restorable"
   document_type   = "Command"
@@ -44,6 +43,10 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "# Get hosted zones as JSON for reliable parsing",
               "HOSTED_ZONES_JSON=`aws route53 list-hosted-zones --query 'HostedZones' --output json --region $$REGION`",
               "",
+              "echo '--- HOSTED ZONES DATA ---'",
+              "echo \"$$HOSTED_ZONES_JSON\"",
+              "echo '-------------------------'",
+              "",
               "if [ -z \"$$HOSTED_ZONES_JSON\" ] || [ \"$$HOSTED_ZONES_JSON\" = \"[]\" ]; then",
               "    echo \"No hosted zones found.\"",
               "    exit 0",
@@ -51,6 +54,9 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "",
               "# Loop through each zone using jq for safety",
               "echo \"$$HOSTED_ZONES_JSON\" | jq -c '.[]' | while read -r zone_json; do",
+              "    echo '--- PROCESSING ZONE ---'",
+              "    echo \"$$zone_json\"",
+              "    echo '-----------------------'",
               "    RAW_ZONE_ID=`echo \"$$zone_json\" | jq -r '.Id'`",
               "    ZONE_NAME=`echo \"$$zone_json\" | jq -r '.Name'`",
               "    ZONE_ID=`echo \"$$RAW_ZONE_ID\" | cut -d'/' -f3`",
