@@ -1,2 +1,2 @@
-/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/6d2d8844-d5c9-464b-906e-b2dea5797767/backupRoute53/_script.sh: line 41: syntax error near unexpected token `('
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/043f79ed-81de-403c-bd3c-d4917f6c8f8f/backupRoute53/_script.sh: line 36: unexpected EOF while looking for matching ``'
 failed to run commands: exit status 2
