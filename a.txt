@@ -96,7 +96,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
               "TOKEN=`curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\"`",
               "REGION=`curl -s -H \"X-aws-ec2-metadata-token: $$TOKEN\" \"http://169.254.169.254/latest/meta-data/placement/region\"`",
               "",
-              "BACKUP_DIR=\"/tmp/route53-backup-$$$$`",
+              "BACKUP_DIR=\"/tmp/route53-backup-$$$$",
               "mkdir -p \"$$BACKUP_DIR\"",
               "",
               "HOSTED_ZONES_DATA=`aws route53 list-hosted-zones --query 'HostedZones[].[Id, Name]' --output text --region $$REGION`",
