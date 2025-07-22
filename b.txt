@@ -1,7 +1,491 @@
++ echo '--- SCRIPT START ---'
++ S3_BUCKET_NAME=epic-dev-route53-backups
++ S3_FOLDER=route53-backups
++ type jq
++ echo 'Fetching IMDSv2 token with verbose output...'
+++ curl -v -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600'
+*   Trying 169.254.169.254...
+* TCP_NODELAY set
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0* Connected to 169.254.169.254 (169.254.169.254) port 80 (#0)
+> PUT /latest/api/token HTTP/1.1
+> Host: 169.254.169.254
+> User-Agent: curl/7.61.1
+> Accept: */*
+> X-aws-ec2-metadata-token-ttl-seconds: 21600
+> 
+< HTTP/1.1 200 OK
+< X-Aws-Ec2-Metadata-Token-Ttl-Seconds: 21600
+< Content-Length: 56
+< Date: Tue, 22 Jul 2025 21:29:16 GMT
+< Server: EC2ws
+< Connection: close
+< Content-Type: text/plain
+< 
+{ [56 bytes data]
+
+100    56  100    56    0     0  56000      0 --:--:-- --:--:-- --:--:-- 56000
+* Closing connection 0
++ TOKEN=AQAEAJEOBbizTzjUh8K9nIb-sPl1WaHACBDvC7z0kHeZJwFM-2WkZw==
++ echo '--- TOKEN VALUE ---: [AQAEAJEOBbizTzjUh8K9nIb-sPl1WaHACBDvC7z0kHeZJwFM-2WkZw==]'
++ '[' -z AQAEAJEOBbizTzjUh8K9nIb-sPl1WaHACBDvC7z0kHeZJwFM-2WkZw== ']'
++ echo 'Fetching region with verbose output...'
+++ curl -v -H 'X-aws-ec2-metadata-token: AQAEAJEOBbizTzjUh8K9nIb-sPl1WaHACBDvC7z0kHeZJwFM-2WkZw==' http://169.254.169.254/latest/meta-data/placement/region
+*   Trying 169.254.169.254...
+* TCP_NODELAY set
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0* Connected to 169.254.169.254 (169.254.169.254) port 80 (#0)
+> GET /latest/meta-data/placement/region HTTP/1.1
+> Host: 169.254.169.254
+> User-Agent: curl/7.61.1
+> Accept: */*
+> X-aws-ec2-metadata-token: AQAEAJEOBbizTzjUh8K9nIb-sPl1WaHACBDvC7z0kHeZJwFM-2WkZw==
+> 
+< HTTP/1.1 200 OK
+< X-Aws-Ec2-Metadata-Token-Ttl-Seconds: 21600
+< Content-Type: text/plain
+< Accept-Ranges: none
+< Last-Modified: Tue, 22 Jul 2025 20:48:46 GMT
+< Content-Length: 9
+< Date: Tue, 22 Jul 2025 21:29:16 GMT
+< Server: EC2ws
+< Connection: close
+< 
+{ [9 bytes data]
+
+100     9  100     9    0     0   9000      0 --:--:-- --:--:-- --:--:--  9000
+* Closing connection 0
++ REGION=us-east-1
++ echo '--- REGION VALUE ---: [us-east-1]'
++ '[' -z us-east-1 ']'
++ echo 'Region identified as: us-east-1'
++ BACKUP_DIR=/tmp/route53-backups-tmp
++ mkdir -p /tmp/route53-backups-tmp
++ echo 'Listing hosted zones...'
+++ aws route53 list-hosted-zones --query HostedZones --output json --region us-east-1
++ HOSTED_ZONES_JSON='[
+    {
+        "Id": "/hostedzone/Z02971932RG8T826QMLWO",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:15.201",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02970361UQVW28BWZ53E",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:09:58.748",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 3
+    },
+    {
+        "Id": "/hostedzone/Z001172226CTWFGMN8EVQ",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:18.649",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z078531522J9VB1L25Q8N",
+        "Name": "eppdev.aws.cignacloud.com.",
+        "CallerReference": "terraform-20231128175855206300000001",
+        "Config": {
+            "Comment": "Managed by Terraform",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02291217W27N2LB7J67",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:10:00.620",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 44
+    }
+]'
++ echo '--- RAW HOSTED ZONES DATA ---'
++ echo '[
+    {
+        "Id": "/hostedzone/Z02971932RG8T826QMLWO",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:15.201",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02970361UQVW28BWZ53E",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:09:58.748",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 3
+    },
+    {
+        "Id": "/hostedzone/Z001172226CTWFGMN8EVQ",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:18.649",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z078531522J9VB1L25Q8N",
+        "Name": "eppdev.aws.cignacloud.com.",
+        "CallerReference": "terraform-20231128175855206300000001",
+        "Config": {
+            "Comment": "Managed by Terraform",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02291217W27N2LB7J67",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:10:00.620",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 44
+    }
+]'
++ echo ---------------------------
++ '[' -z '[
+    {
+        "Id": "/hostedzone/Z02971932RG8T826QMLWO",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:15.201",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02970361UQVW28BWZ53E",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:09:58.748",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 3
+    },
+    {
+        "Id": "/hostedzone/Z001172226CTWFGMN8EVQ",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:18.649",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z078531522J9VB1L25Q8N",
+        "Name": "eppdev.aws.cignacloud.com.",
+        "CallerReference": "terraform-20231128175855206300000001",
+        "Config": {
+            "Comment": "Managed by Terraform",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02291217W27N2LB7J67",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:10:00.620",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 44
+    }
+]' ']'
++ '[' '[
+    {
+        "Id": "/hostedzone/Z02971932RG8T826QMLWO",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:15.201",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02970361UQVW28BWZ53E",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:09:58.748",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 3
+    },
+    {
+        "Id": "/hostedzone/Z001172226CTWFGMN8EVQ",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:18.649",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z078531522J9VB1L25Q8N",
+        "Name": "eppdev.aws.cignacloud.com.",
+        "CallerReference": "terraform-20231128175855206300000001",
+        "Config": {
+            "Comment": "Managed by Terraform",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02291217W27N2LB7J67",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:10:00.620",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 44
+    }
+]' = '[]' ']'
++ echo '[
+    {
+        "Id": "/hostedzone/Z02971932RG8T826QMLWO",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:15.201",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02970361UQVW28BWZ53E",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:09:58.748",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 3
+    },
+    {
+        "Id": "/hostedzone/Z001172226CTWFGMN8EVQ",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:18.649",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z078531522J9VB1L25Q8N",
+        "Name": "eppdev.aws.cignacloud.com.",
+        "CallerReference": "terraform-20231128175855206300000001",
+        "Config": {
+            "Comment": "Managed by Terraform",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02291217W27N2LB7J67",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:10:00.620",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 44
+    }
+]'
++ jq -c '.[]'
++ read -r zone_json
+++ echo '{"Id":"/hostedzone/Z02971932RG8T826QMLWO","Name":"epic-dev.aws.evernorthcloud.com.","CallerReference":"2023-05-18 21:00:15.201","Config":{"Comment":"DO NOT DELETE - Cigna public hosted zone.","PrivateZone":false},"ResourceRecordSetCount":2}'
+++ jq -r .Id
++ RAW_ZONE_ID=/hostedzone/Z02971932RG8T826QMLWO
+++ echo '{"Id":"/hostedzone/Z02971932RG8T826QMLWO","Name":"epic-dev.aws.evernorthcloud.com.","CallerReference":"2023-05-18 21:00:15.201","Config":{"Comment":"DO NOT DELETE - Cigna public hosted zone.","PrivateZone":false},"ResourceRecordSetCount":2}'
+++ jq -r .Name
++ ZONE_NAME=epic-dev.aws.evernorthcloud.com.
+++ echo /hostedzone/Z02971932RG8T826QMLWO
+++ cut -d/ -f3
++ ZONE_ID=Z02971932RG8T826QMLWO
+++ date +%Y-%m-%d-%H%M%S
++ TIMESTAMP=2025-07-22-212916
+++ echo epic-dev.aws.evernorthcloud.com.
+++ sed 's/\.$//'
+++ tr . _
++ FILENAME_BASE=epic-dev_aws_evernorthcloud_com
++ FILENAME=epic-dev_aws_evernorthcloud_com_2025-07-22-212916.json
++ RAW_RECORDS_FILE=/tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
++ BACKUP_FILE_PATH=/tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com_2025-07-22-212916.json
++ echo 'Backing up zone: epic-dev.aws.evernorthcloud.com. (Z02971932RG8T826QMLWO) to file epic-dev_aws_evernorthcloud_com_2025-07-22-212916.json'
++ aws route53 list-resource-record-sets --hosted-zone-id Z02971932RG8T826QMLWO --region us-east-1
 + jq -e .ResourceRecordSets /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
-+ COMMENT_TEXT='Restore from backup 2025-07-22-212327 for epic-dev.aws.evernorthcloud.com.'
-+ jq --arg comment 'Restore from backup 2025-07-22-212327 for epic-dev.aws.evernorthcloud.com.' '{ "Comment": $$comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
-jq: error: syntax error, unexpected '$', expecting IDENT or __loc__ (Unix shell quoting issues?) at <top-level>, line 1:
-{ "Comment": $$comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }              
-jq: 1 compile error
-failed to run commands: exit status 3
++ COMMENT_TEXT='Restore from backup 2025-07-22-212916 for epic-dev.aws.evernorthcloud.com.'
++ jq --arg comment 'Restore from backup 2025-07-22-212916 for epic-dev.aws.evernorthcloud.com.' '{ "Comment": $comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
++ CHANGES_COUNT=0
++ jq -e .Changes /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com_2025-07-22-212916.json
+++ jq '.Changes | length' /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com_2025-07-22-212916.json
++ CHANGES_COUNT=2
++ '[' 451550CHANGES_COUNT -gt 0 ']'
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/ec7678cb-140e-4a1c-aa30-e3dabf4101db/backupRoute53/_script.sh: line 85: [: 451550CHANGES_COUNT: integer expression expected
++ echo 'Zone epic-dev.aws.evernorthcloud.com. contains no records to back up. Skipping upload.'
++ read -r zone_json
+++ echo '{"Id":"/hostedzone/Z02970361UQVW28BWZ53E","Name":"epic-dev.aws.cignacloud.com.","CallerReference":"2023-05-18 21:09:58.748","Config":{"Comment":"DO NOT DELETE - Cigna public hosted zone.","PrivateZone":false},"ResourceRecordSetCount":3}'
+++ jq -r .Id
++ RAW_ZONE_ID=/hostedzone/Z02970361UQVW28BWZ53E
+++ echo '{"Id":"/hostedzone/Z02970361UQVW28BWZ53E","Name":"epic-dev.aws.cignacloud.com.","CallerReference":"2023-05-18 21:09:58.748","Config":{"Comment":"DO NOT DELETE - Cigna public hosted zone.","PrivateZone":false},"ResourceRecordSetCount":3}'
+++ jq -r .Name
++ ZONE_NAME=epic-dev.aws.cignacloud.com.
+++ echo /hostedzone/Z02970361UQVW28BWZ53E
+++ cut -d/ -f3
++ ZONE_ID=Z02970361UQVW28BWZ53E
+++ date +%Y-%m-%d-%H%M%S
++ TIMESTAMP=2025-07-22-212917
+++ echo epic-dev.aws.cignacloud.com.
+++ sed 's/\.$//'
+++ tr . _
++ FILENAME_BASE=epic-dev_aws_cignacloud_com
++ FILENAME=epic-dev_aws_cignacloud_com_2025-07-22-212917.json
++ RAW_RECORDS_FILE=/tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com-raw.json
++ BACKUP_FILE_PATH=/tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com_2025-07-22-212917.json
++ echo 'Backing up zone: epic-dev.aws.cignacloud.com. (Z02970361UQVW28BWZ53E) to file epic-dev_aws_cignacloud_com_2025-07-22-212917.json'
++ aws route53 list-resource-record-sets --hosted-zone-id Z02970361UQVW28BWZ53E --region us-east-1
++ jq -e .ResourceRecordSets /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com-raw.json
++ COMMENT_TEXT='Restore from backup 2025-07-22-212917 for epic-dev.aws.cignacloud.com.'
++ jq --arg comment 'Restore from backup 2025-07-22-212917 for epic-dev.aws.cignacloud.com.' '{ "Comment": $comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com-raw.json
++ CHANGES_COUNT=0
++ jq -e .Changes /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com_2025-07-22-212917.json
+++ jq '.Changes | length' /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com_2025-07-22-212917.json
++ CHANGES_COUNT=3
++ '[' 451550CHANGES_COUNT -gt 0 ']'
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/ec7678cb-140e-4a1c-aa30-e3dabf4101db/backupRoute53/_script.sh: line 85: [: 451550CHANGES_COUNT: integer expression expected
++ echo 'Zone epic-dev.aws.cignacloud.com. contains no records to back up. Skipping upload.'
++ read -r zone_json
+++ echo '{"Id":"/hostedzone/Z001172226CTWFGMN8EVQ","Name":"epic-dev.aws.evernorthcloud.com.","CallerReference":"2023-05-18 21:00:18.649","Config":{"Comment":"DO NOT DELETE - Cigna private hosted zone.","PrivateZone":true},"ResourceRecordSetCount":2}'
+++ jq -r .Id
++ RAW_ZONE_ID=/hostedzone/Z001172226CTWFGMN8EVQ
+++ echo '{"Id":"/hostedzone/Z001172226CTWFGMN8EVQ","Name":"epic-dev.aws.evernorthcloud.com.","CallerReference":"2023-05-18 21:00:18.649","Config":{"Comment":"DO NOT DELETE - Cigna private hosted zone.","PrivateZone":true},"ResourceRecordSetCount":2}'
+++ jq -r .Name
++ ZONE_NAME=epic-dev.aws.evernorthcloud.com.
+++ echo /hostedzone/Z001172226CTWFGMN8EVQ
+++ cut -d/ -f3
++ ZONE_ID=Z001172226CTWFGMN8EVQ
+++ date +%Y-%m-%d-%H%M%S
++ TIMESTAMP=2025-07-22-212918
+++ echo epic-dev.aws.evernorthcloud.com.
+++ sed 's/\.$//'
+++ tr . _
++ FILENAME_BASE=epic-dev_aws_evernorthcloud_com
++ FILENAME=epic-dev_aws_evernorthcloud_com_2025-07-22-212918.json
++ RAW_RECORDS_FILE=/tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
++ BACKUP_FILE_PATH=/tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com_2025-07-22-212918.json
++ echo 'Backing up zone: epic-dev.aws.evernorthcloud.com. (Z001172226CTWFGMN8EVQ) to file epic-dev_aws_evernorthcloud_com_2025-07-22-212918.json'
++ aws route53 list-resource-record-sets --hosted-zone-id Z001172226CTWFGMN8EVQ --region us-east-1
++ jq -e .ResourceRecordSets /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
++ COMMENT_TEXT='Restore from backup 2025-07-22-212918 for epic-dev.aws.evernorthcloud.com.'
++ jq --arg comment 'Restore from backup 2025-07-22-212918 for epic-dev.aws.evernorthcloud.com.' '{ "Comment": $comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com-raw.json
++ CHANGES_COUNT=0
++ jq -e .Changes /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com_2025-07-22-212918.json
+++ jq '.Changes | length' /tmp/route53-backups-tmp/epic-dev_aws_evernorthcloud_com_2025-07-22-212918.json
++ CHANGES_COUNT=2
++ '[' 451550CHANGES_COUNT -gt 0 ']'
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/ec7678cb-140e-4a1c-aa30-e3dabf4101db/backupRoute53/_script.sh: line 85: [: 451550CHANGES_COUNT: integer expression expected
++ echo 'Zone epic-dev.aws.evernorthcloud.com. contains no records to back up. Skipping upload.'
++ read -r zone_json
+++ echo '{"Id":"/hostedzone/Z078531522J9VB1L25Q8N","Name":"eppdev.aws.cignacloud.com.","CallerReference":"terraform-20231128175855206300000001","Config":{"Comment":"Managed by Terraform","PrivateZone":true},"ResourceRecordSetCount":2}'
+++ jq -r .Id
++ RAW_ZONE_ID=/hostedzone/Z078531522J9VB1L25Q8N
+++ echo '{"Id":"/hostedzone/Z078531522J9VB1L25Q8N","Name":"eppdev.aws.cignacloud.com.","CallerReference":"terraform-20231128175855206300000001","Config":{"Comment":"Managed by Terraform","PrivateZone":true},"ResourceRecordSetCount":2}'
+++ jq -r .Name
++ ZONE_NAME=eppdev.aws.cignacloud.com.
+++ echo /hostedzone/Z078531522J9VB1L25Q8N
+++ cut -d/ -f3
++ ZONE_ID=Z078531522J9VB1L25Q8N
+++ date +%Y-%m-%d-%H%M%S
++ TIMESTAMP=2025-07-22-212918
+++ echo eppdev.aws.cignacloud.com.
+++ sed 's/\.$//'
+++ tr . _
++ FILENAME_BASE=eppdev_aws_cignacloud_com
++ FILENAME=eppdev_aws_cignacloud_com_2025-07-22-212918.json
++ RAW_RECORDS_FILE=/tmp/route53-backups-tmp/eppdev_aws_cignacloud_com-raw.json
++ BACKUP_FILE_PATH=/tmp/route53-backups-tmp/eppdev_aws_cignacloud_com_2025-07-22-212918.json
++ echo 'Backing up zone: eppdev.aws.cignacloud.com. (Z078531522J9VB1L25Q8N) to file eppdev_aws_cignacloud_com_2025-07-22-212918.json'
++ aws route53 list-resource-record-sets --hosted-zone-id Z078531522J9VB1L25Q8N --region us-east-1
++ jq -e .ResourceRecordSets /tmp/route53-backups-tmp/eppdev_aws_cignacloud_com-raw.json
++ COMMENT_TEXT='Restore from backup 2025-07-22-212918 for eppdev.aws.cignacloud.com.'
++ jq --arg comment 'Restore from backup 2025-07-22-212918 for eppdev.aws.cignacloud.com.' '{ "Comment": $comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' /tmp/route53-backups-tmp/eppdev_aws_cignacloud_com-raw.json
++ CHANGES_COUNT=0
++ jq -e .Changes /tmp/route53-backups-tmp/eppdev_aws_cignacloud_com_2025-07-22-212918.json
+++ jq '.Changes | length' /tmp/route53-backups-tmp/eppdev_aws_cignacloud_com_2025-07-22-212918.json
++ CHANGES_COUNT=2
++ '[' 451550CHANGES_COUNT -gt 0 ']'
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/ec7678cb-140e-4a1c-aa30-e3dabf4101db/backupRoute53/_script.sh: line 85: [: 451550CHANGES_COUNT: integer expression expected
++ echo 'Zone eppdev.aws.cignacloud.com. contains no records to back up. Skipping upload.'
++ read -r zone_json
+++ echo '{"Id":"/hostedzone/Z02291217W27N2LB7J67","Name":"epic-dev.aws.cignacloud.com.","CallerReference":"2023-05-18 21:10:00.620","Config":{"Comment":"DO NOT DELETE - Cigna private hosted zone.","PrivateZone":true},"ResourceRecordSetCount":44}'
+++ jq -r .Id
++ RAW_ZONE_ID=/hostedzone/Z02291217W27N2LB7J67
+++ echo '{"Id":"/hostedzone/Z02291217W27N2LB7J67","Name":"epic-dev.aws.cignacloud.com.","CallerReference":"2023-05-18 21:10:00.620","Config":{"Comment":"DO NOT DELETE - Cigna private hosted zone.","PrivateZone":true},"ResourceRecordSetCount":44}'
+++ jq -r .Name
++ ZONE_NAME=epic-dev.aws.cignacloud.com.
+++ echo /hostedzone/Z02291217W27N2LB7J67
+++ cut -d/ -f3
++ ZONE_ID=Z02291217W27N2LB7J67
+++ date +%Y-%m-%d-%H%M%S
++ TIMESTAMP=2025-07-22-212919
+++ echo epic-dev.aws.cignacloud.com.
+++ sed 's/\.$//'
+++ tr . _
++ FILENAME_BASE=epic-dev_aws_cignacloud_com
++ FILENAME=epic-dev_aws_cignacloud_com_2025-07-22-212919.json
++ RAW_RECORDS_FILE=/tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com-raw.json
++ BACKUP_FILE_PATH=/tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com_2025-07-22-212919.json
++ echo 'Backing up zone: epic-dev.aws.cignacloud.com. (Z02291217W27N2LB7J67) to file epic-dev_aws_cignacloud_com_2025-07-22-212919.json'
++ aws route53 list-resource-record-sets --hosted-zone-id Z02291217W27N2LB7J67 --region us-east-1
++ jq -e .ResourceRecordSets /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com-raw.json
++ COMMENT_TEXT='Restore from backup 2025-07-22-212919 for epic-dev.aws.cignacloud.com.'
++ jq --arg comment 'Restore from backup 2025-07-22-212919 for epic-dev.aws.cignacloud.com.' '{ "Comment": $comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com-raw.json
++ CHANGES_COUNT=0
++ jq -e .Changes /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com_2025-07-22-212919.json
+++ jq '.Changes | length' /tmp/route53-backups-tmp/epic-dev_aws_cignacloud_com_2025-07-22-212919.json
++ CHANGES_COUNT=44
++ '[' 451550CHANGES_COUNT -gt 0 ']'
+/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/ec7678cb-140e-4a1c-aa30-e3dabf4101db/backupRoute53/_script.sh: line 85: [: 451550CHANGES_COUNT: integer expression expected
++ echo 'Zone epic-dev.aws.cignacloud.com. contains no records to back up. Skipping upload.'
++ read -r zone_json
++ echo 'Cleaning up temporary directory: /tmp/route53-backups-tmp'
++ rm -rf /tmp/route53-backups-tmp
++ echo 'Route 53 backup complete.'
