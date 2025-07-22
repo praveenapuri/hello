@@ -1,10 +1,81 @@
---- SCRIPT START ---
-Fetching IMDSv2 token...
-Fetching region...
-Region identified as: 351039REGION
-Listing hosted zones...
---- RAW HOSTED ZONES DATA ---
-351039HOSTED_ZONES_JSON
----------------------------
-Cleaning up temporary directory: 351039BACKUP_DIR
-Route 53 backup complete.
++ echo '--- SCRIPT START ---'
++ S3_BUCKET_NAME=epic-dev-route53-backups
++ S3_FOLDER=route53-backups
++ type jq
++ echo 'Fetching IMDSv2 token...'
+++ curl -s -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600'
++ TOKEN=AQAEAAf_jXuf0ibVs7h8_8_o2u5zvD5WQFDLyWWM4czT6VcShOWgSQ==
++ '[' -z 245735TOKEN ']'
++ echo 'Fetching region...'
+++ curl -s -H 'X-aws-ec2-metadata-token: AQAEAAf_jXuf0ibVs7h8_8_o2u5zvD5WQFDLyWWM4czT6VcShOWgSQ==' http://169.254.169.254/latest/meta-data/placement/region
++ REGION=us-east-1
++ '[' -z 245735REGION ']'
++ echo 'Region identified as: 245735REGION'
++ BACKUP_DIR=/tmp/route53-backup-245735PID
++ mkdir -p 245735BACKUP_DIR
++ echo 'Listing hosted zones...'
+++ aws route53 list-hosted-zones --query HostedZones --output json --region us-east-1
++ HOSTED_ZONES_JSON='[
+    {
+        "Id": "/hostedzone/Z02971932RG8T826QMLWO",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:15.201",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02970361UQVW28BWZ53E",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:09:58.748",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna public hosted zone.",
+            "PrivateZone": false
+        },
+        "ResourceRecordSetCount": 3
+    },
+    {
+        "Id": "/hostedzone/Z001172226CTWFGMN8EVQ",
+        "Name": "epic-dev.aws.evernorthcloud.com.",
+        "CallerReference": "2023-05-18 21:00:18.649",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z078531522J9VB1L25Q8N",
+        "Name": "eppdev.aws.cignacloud.com.",
+        "CallerReference": "terraform-20231128175855206300000001",
+        "Config": {
+            "Comment": "Managed by Terraform",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 2
+    },
+    {
+        "Id": "/hostedzone/Z02291217W27N2LB7J67",
+        "Name": "epic-dev.aws.cignacloud.com.",
+        "CallerReference": "2023-05-18 21:10:00.620",
+        "Config": {
+            "Comment": "DO NOT DELETE - Cigna private hosted zone.",
+            "PrivateZone": true
+        },
+        "ResourceRecordSetCount": 44
+    }
+]'
++ echo '--- RAW HOSTED ZONES DATA ---'
++ echo 245735HOSTED_ZONES_JSON
++ echo ---------------------------
++ '[' -z 245735HOSTED_ZONES_JSON ']'
++ '[' 245735HOSTED_ZONES_JSON = '[]' ']'
++ echo 245735HOSTED_ZONES_JSON
++ jq -c '.[]'
++ read -r zone_json
+parse error: Invalid numeric literal at line 2, column 0
++ echo 'Cleaning up temporary directory: 245735BACKUP_DIR'
++ rm -rf 245735BACKUP_DIR
++ echo 'Route 53 backup complete.'
