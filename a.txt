@@ -1,5 +1,2 @@
-# Validate that the fetched records file is valid JSON and has ResourceRecordSets
-if ! jq -e '.ResourceRecordSets' "$RAW_RECORDS_FILE" >/dev/null 2>&1; then
-  echo "Zone $ZONE_NAME contains no valid records or the API call failed. Skipping."
-  continue
-fi
+Cleaning up temporary directory: 1614931BACKUP_DIR
+Route 53 backup complete.
