@@ -1,0 +1,90 @@
+
+resource "aws_ssm_document" "route53_backup_doc" {
+  name            = "epic-payer-${var.env}-backup-Route53-To-S3"
+  document_type   = "Command"
+  document_format = "JSON"
+
+  content = jsonencode({
+    schemaVersion = "2.2",
+    description   = "Backs up all Route 53 hosted zone records to the specified S3 bucket.",
+    parameters = {
+      s3Bucket = {
+        type    = "String"
+        default = "${data.aws_s3_bucket.route53_backups.bucket}"
+      }
+    },
+    mainSteps = [
+      {
+        action = "aws:runShellScript",
+        name   = "backupRoute53",
+        inputs = {
+          runCommand = [
+            "#!/bin/sh",
+            "set -e",
+            "S3_BUCKET_NAME="{{ s3Bucket }}"",
+            "S3_FOLDER="route53-backups"",
+            "",
+            "if ! type jq >/dev/null 2>&1; then",
+            "  echo 'jq not found. Attempting to install...'",
+            "  if [ -f /etc/redhat-release ]; then",
+            "    sudo yum install -y jq",
+            "  elif [ -f /etc/lsb-release ]; then",
+            "    sudo apt-get update && sudo apt-get install -y jq",
+            "  else",
+            "    echo 'Unsupported OS. Install jq manually.' >&2",
+            "    exit 1",
+            "  fi",
+            "fi",
+            "",
+            "TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")",
+            "REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/placement/region")",
+            "",
+            "BACKUP_DIR="/tmp/route53-backup-tmp"",
+            "mkdir -p "$BACKUP_DIR"",
+            "HOSTED_ZONES_JSON=$(aws route53 list-hosted-zones --query 'HostedZones' --output json --region $REGION)",
+            "",
+            "if [ -z "$HOSTED_ZONES_JSON" ] || [ "$HOSTED_ZONES_JSON" = "[]" ]; then",
+            "  echo "No hosted zones found."",
+            "  exit 0",
+            "fi",
+            "",
+            "echo "$HOSTED_ZONES_JSON" | jq -c '.[]' | while read -r zone_json; do",
+            "  RAW_ZONE_ID=$(echo "$zone_json" | jq -r '.Id')",
+            "  ZONE_NAME=$(echo "$zone_json" | jq -r '.Name')",
+            "  ZONE_ID=$(echo "$RAW_ZONE_ID" | cut -d'/' -f3)",
+            "  TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)",
+            "  FILENAME_BASE=$(echo "$ZONE_NAME" | sed 's/\\.$//' | tr '.' '_')",
+            "  FILENAME="${FILENAME_BASE}_${TIMESTAMP}.json"",
+            "  RAW_RECORDS_FILE="$BACKUP_DIR/${FILENAME_BASE}-raw.json"",
+            "  BACKUP_FILE_PATH="$BACKUP_DIR/$FILENAME"",
+            "",
+            "  echo "Backing up zone: $ZONE_NAME ($ZONE_ID) to $FILENAME"",
+            "  aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" --region $REGION > "$RAW_RECORDS_FILE"",
+            "",
+            "  if ! jq -e '.ResourceRecordSets' "$RAW_RECORDS_FILE" >/dev/null 2>&1; then",
+            "    echo "Zone $ZONE_NAME has no valid records. Skipping."",
+            "    continue",
+            "  fi",
+            "",
+            "  COMMENT_TEXT="Restore from backup $TIMESTAMP for $ZONE_NAME"",
+            "  jq --arg comment "$COMMENT_TEXT" '{ "Comment": $comment, "Changes": [ .ResourceRecordSets[] | { "Action": "UPSERT", "ResourceRecordSet": . } ] }' "$RAW_RECORDS_FILE" > "$BACKUP_FILE_PATH"",
+            "",
+            "  CHANGES_COUNT=$(jq '.Changes | length' "$BACKUP_FILE_PATH")",
+            "  if [ "$CHANGES_COUNT" -gt 0 ]; then",
+            "    S3_KEY="$S3_FOLDER/$FILENAME"",
+            "    echo "Uploading to s3://$S3_BUCKET_NAME/$S3_KEY"",
+            "    aws s3 cp "$BACKUP_FILE_PATH" "s3://$S3_BUCKET_NAME/$S3_KEY" --region $REGION",
+            "  else",
+            "    echo "Zone $ZONE_NAME contains no records to back up. Skipping upload."",
+            "  fi",
+            "done",
+            "",
+            "echo "Cleaning up temporary directory: $BACKUP_DIR"",
+            "rm -rf "$BACKUP_DIR"",
+            "echo "Route 53 backup complete.""
+          ]
+        }
+      }
+    ]
+  })
+}
