@@ -1,4 +1,3 @@
-# SSM Command to backup route53 records to S3
 resource "aws_ssm_document" "route53_backup_doc" {
   name            = "epic-payer-${var.env}-backup-Route53-To-S3"
   document_type   = "Command"
@@ -78,7 +77,7 @@ resource "aws_ssm_document" "route53_backup_doc" {
             "    jq --arg comment \"$$COMMENT_TEXT\" '{ \"Comment\": $$comment, \"Changes\": [ .ResourceRecordSets[] | { \"Action\": \"UPSERT\", \"ResourceRecordSet\": . } ] }' \"$$RAW_RECORDS_FILE\" > \"$$BACKUP_FILE_PATH\"",
             "",
             "    # Check if the generated backup file has any changes before uploading",
-            "    CHANGES_COUNT=`jq '.Changes | length' \"$$BACKUP_FILE_PATH\"`",
+            "    CHANGES_COUNT=`jq '.Changes | length' \"$$BACKUP_FILE_PATH\" 2>/dev/null || echo 0`",
             "    if [ \"$$CHANGES_COUNT\" -gt 0 ]; then",
             "        S3_KEY=\"$$S3_FOLDER/$${FILENAME}\"",
             "        echo \"Uploading to s3://$$S3_BUCKET_NAME/$$S3_KEY\"",
@@ -88,8 +87,8 @@ resource "aws_ssm_document" "route53_backup_doc" {
             "    fi",
             "done",
             "",
-            "echo \"Cleaning up temporary directory: $$BACKUP_DIR\"",
-            "rm -rf \"$$BACKUP_DIR\"",
+            "echo \"Cleaning up temporary directory: $${BACKUP_DIR}\"",
+            "rm -rf \"$${BACKUP_DIR}\"",
             "",
             "echo \"Route 53 backup complete.\""
           ]
