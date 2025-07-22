@@ -1,2 +1,1 @@
-/var/lib/amazon/ssm/i-03b815a947dd72035/document/orchestration/34340bc2-f35b-410e-a6b0-1e71bda8288d/backupRoute53/_script.sh: line 21: syntax error near unexpected token `('
-failed to run commands: exit status 2
+parse error: Invalid numeric literal at line 2, column 0
