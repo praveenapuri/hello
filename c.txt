@@ -1,1 +1,10 @@
-{ "Alert": "SSM Command Failed in Environment: dev", "Document": "epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest", "Command ID": "e828e2e1-f0f4-4405-b87d-963e506fd93b", "Status": "Failed", "Region": "us-east-1", "Message": "Please check the SSM Run Command history in the AWS Console for details." }
+  # This block transforms the raw event into a readable plain text message.
+  input_transformer {
+    input_paths = {
+      "documentName" = "$.detail.document-name",
+      "commandId"    = "$.detail.command-id",
+      "status"       = "$.detail.status",
+      "region"       = "$.region"
+    }
+    input_template = "\"SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history in the AWS Console for details.\""
+  }
