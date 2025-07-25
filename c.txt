@@ -1,11 +1,25 @@
-  # This block transforms the raw event into a structured JSON object for clean email formatting.
-  input_transformer {
-    input_paths = {
-      "documentName" = "$.detail.document-name",
-      "commandId"    = "$.detail.command-id",
-      "status"       = "$.detail.status",
-      "region"       = "$.region"
-    }
-    # This template creates a valid JSON object that SNS will format as a key-value table in email.
-    input_template = "{ \"Alert\": \"SSM Command Failed in Environment: ${var.env}\", \"Document\": \"<documentName>\", \"Command ID\": \"<commandId>\", \"Status\": \"<status>\", \"Region\": \"<region>\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }"
+input_transformer {
+  input_paths = {
+    "documentName" = "$.detail.document-name",
+    "commandId"    = "$.detail.command-id",
+    "status"       = "$.detail.status",
+    "region"       = "$.region"
   }
+
+  input_template = <<EOF
+{
+  "Alert": "SSM Command Failed in Environment: ${var.env}",
+  "HtmlMessage": "<html><body>
+    <p><b>SSM Command Failure Alert</b></p>
+    <table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'>
+      <tr><th>Key</th><th>Value</th></tr>
+      <tr><td>Document</td><td>&lt;documentName&gt;</td></tr>
+      <tr><td>Command ID</td><td>&lt;commandId&gt;</td></tr>
+      <tr><td>Status</td><td>&lt;status&gt;</td></tr>
+      <tr><td>Region</td><td>&lt;region&gt;</td></tr>
+    </table>
+    <p>Please check the SSM Run Command history in the AWS Console for details.</p>
+  </body></html>"
+}
+EOF
+}
