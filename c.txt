@@ -1,10 +1,1 @@
-  # This block transforms the raw event into a structured JSON object for clean email formatting.
-  input_transformer {
-    input_paths = {
-      "documentName" = "$.detail.document-name",
-      "commandId"    = "$.detail.command-id",
-      "status"       = "$.detail.status",
-      "region"       = "$.region"
-    }
-    input_template = "{ \"Alert\": \"SSM Command Failed in Environment: ${var.env}\", \"Document\": \"<documentName>\", \"Command ID\": \"<commandId>\", \"Status\": \"<status>\", \"Region\": \"<region>\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }"
-  }
+{ "Alert": "SSM Command Failed in Environment: dev", "Document": "epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest", "Command ID": "e828e2e1-f0f4-4405-b87d-963e506fd93b", "Status": "Failed", "Region": "us-east-1", "Message": "Please check the SSM Run Command history in the AWS Console for details." }
