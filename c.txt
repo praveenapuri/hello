@@ -8,6 +8,14 @@ input_transformer {
 
   input_template = "{\
 \"Alert\": \"SSM Command Failed in Environment: ${var.env}\",\
-\"HtmlMessage\": \"<html><body><p><b>SSM Command Failure Alert</b></p><table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'><tr><th>Key</th><th>Value</th></tr><tr><td>Document</td><td><documentName></td></tr><tr><td>Command ID</td><td><commandId></td></tr><tr><td>Status</td><td><status></td></tr><tr><td>Region</td><td><region></td></tr></table><p>Please check the SSM Run Command history in the AWS Console for details.</p></body></html>\"\
+\"Message\": \"\
+SSM Command Failure Alert\n\n\
+-----------------------------\n\
+Document   : <documentName>\n\
+Command ID : <commandId>\n\
+Status     : <status>\n\
+Region     : <region>\n\
+-----------------------------\n\
+Please check the SSM Run Command history in the AWS Console for details.\"\
 }"
 }
