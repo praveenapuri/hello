@@ -6,5 +6,6 @@
       "status"       = "$.detail.status",
       "region"       = "$.region"
     }
+    # This template creates a valid JSON object that SNS will format as a key-value table in email.
     input_template = "{ \"Alert\": \"SSM Command Failed in Environment: ${var.env}\", \"Document\": \"<documentName>\", \"Command ID\": \"<commandId>\", \"Status\": \"<status>\", \"Region\": \"<region>\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }"
   }
