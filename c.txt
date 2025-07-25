@@ -1,4 +1,4 @@
-  # This block transforms the raw event into a readable plain text message.
+  # This block transforms the raw event into a structured JSON object for clean email formatting.
   input_transformer {
     input_paths = {
       "documentName" = "$.detail.document-name",
@@ -6,5 +6,5 @@
       "status"       = "$.detail.status",
       "region"       = "$.region"
     }
-    input_template = "\"SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history in the AWS Console for details.\""
+    input_template = "{ \"Alert\": \"SSM Command Failed in Environment: ${var.env}\", \"Document\": \"<documentName>\", \"Command ID\": \"<commandId>\", \"Status\": \"<status>\", \"Region\": \"<region>\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }"
   }
