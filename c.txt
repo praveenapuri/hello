@@ -1,10 +1,1 @@
-  # This block transforms the raw event JSON into a readable message
-  input_transformer {
-    input_paths = {
-      "documentName" = "$.detail.document-name",
-      "commandId"    = "$.detail.command-id",
-      "status"       = "$.detail.status",
-      "region"       = "$.region"
-    }
-    input_template = "\"SSM Command Failed in Environment: ${var.env}.\\n\\nDocument Name: <documentName>\\nCommand ID: <commandId>\\nStatus: <status>\\nRegion: <region>\\n\\nPlease check the SSM Run Command history for details.\""
-  }
+"SSM Command Failed in Environment: dev.\n\nDocument Name: epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\nCommand ID: 513e36e0-f154-4473-a65a-33f5fb620ac4\nStatus: Failed\nRegion: us-east-1\n\nPlease check the SSM Run Command history for details."
