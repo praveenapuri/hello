@@ -1,1 +1,10 @@
-{"Alert":"SSM Command Failed in the dev Environment.","Command ID":"\u003ccommandId\u003e","Document":"\u003cdocumentName\u003e","Message":"Please check the SSM Run Command history in the AWS Console for details.","Region":"\u003cregion\u003e","Status":"\u003cstatus\u003e"}
+  # This block transforms the raw event into a structured JSON object for clean email formatting.
+  input_transformer {
+    input_paths = {
+      "documentName" = "$.detail.document-name",
+      "commandId"    = "$.detail.command-id",
+      "status"       = "$.detail.status",
+      "region"       = "$.region"
+    }
+    input_template = "{ \"Alert\": \"SSM Command Failed in Environment: ${var.env}\", \"Document\": \"<documentName>\", \"Command ID\": \"<commandId>\", \"Status\": \"<status>\", \"Region\": \"<region>\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }"
+  }
