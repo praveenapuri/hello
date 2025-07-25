@@ -1,1 +1,26 @@
-"SSM Command Failed in Environment: dev.\n\nDocument Name: epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\nCommand ID: 513e36e0-f154-4473-a65a-33f5fb620ac4\nStatus: Failed\nRegion: us-east-1\n\nPlease check the SSM Run Command history for details."
+  # This block transforms the raw event JSON into a readable message
+  input_transformer {
+    input_paths = {
+      "documentName" = "$.detail.document-name",
+      "commandId"    = "$.detail.command-id",
+      "status"       = "$.detail.status",
+      "region"       = "$.region"
+    }
+    input_template = jsonencode(<<-EOT
+------------------------------------------------------------------
+## SSM COMMAND FAILED ##
+------------------------------------------------------------------
+
+An SSM command has failed to execute in the ${var.env} environment.
+
+DETAILS:
+  - Document Name: <documentName>
+  - Command ID:    <commandId>
+  - Status:        <status>
+  - Region:        <region>
+
+Please check the SSM Run Command history in the AWS Console for the full error log.
+------------------------------------------------------------------
+EOT
+    )
+  }
