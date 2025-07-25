@@ -1,21 +1,7 @@
-input_transformer {
-  input_paths = {
-    "documentName" = "$.detail.document-name",
-    "commandId"    = "$.detail.command-id",
-    "status"       = "$.detail.status",
-    "region"       = "$.region"
-  }
-
-  input_template = "{\
-\"Alert\": \"SSM Command Failed in Environment: ${var.env}\",\
-\"Message\": \"\
-SSM Command Failure Alert\n\n\
------------------------------\n\
-Document   : <documentName>\n\
-Command ID : <commandId>\n\
-Status     : <status>\n\
-Region     : <region>\n\
------------------------------\n\
-Please check the SSM Run Command history in the AWS Console for details.\"\
-}"
+# 2. SNS Subscriptions for a list of email endpoints
+resource "aws_sns_topic_subscription" "email_subscriptions" {
+  for_each  = toset(var.notification_emails)
+  topic_arn = aws_sns_topic.ssm_failure_notifications.arn
+  protocol  = "email"
+  endpoint  = each.value
 }
