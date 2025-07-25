@@ -1,18 +1,13 @@
-│ Error: updating EventBridge Target (epp-devdetect-all-ssm-job-failures-SendToSNS): operation error EventBridge: PutTargets, https response error StatusCode: 400, RequestID: 696a9a08-f645-4b75-9e9e-6ae2e0ac948e, api error ValidationException: Invalid InputTemplate for target SendToSNS : [Source: (String)"{
-│   "Alert": "SSM Command Failed in Environment: dev",
-│   "HtmlMessage": "nullnull
-│     nullnullSSM Command Failure Alert</b></p>
-│     <table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'>
-│       nullnullKey</th>nullValue</th></tr>
-│       nullnullDocument</td>null&lt;documentName&gt;</td></tr>
-│       nullnullCommand ID</td>null&lt;commandId&gt;</td></tr>
-│       nullnullStatus</td>null&lt;status&gt;</td></tr>
-"[truncated 123 chars]; line: 3, column: 27].</td></tr>
-│
-│   with module.crud_endpoints.aws_cloudwatch_event_target.sns_target,
-│   on endpoints\cloudwatch-ssm-alert.tf line 29, in resource "aws_cloudwatch_event_target" "sns_target":
-│   29: resource "aws_cloudwatch_event_target" "sns_target" {
-│
-╵
-time=2025-07-25T16:27:09-04:00 level=error msg=terraform invocation failed in C:/Users/C8P8JH/OneDrive - CIGNA/Documents/git/dev/epic-payer-platform/module/aws/epic-payer-resources error=[C:/Users/C8P8JH/OneDrive - CIGNA/Documents/git/dev/epic-payer-platform/module/aws/epic-payer-resources] exit status 1
-time=2025-07-25T16:27:09-04:00 level=error msg=1 error occurred:
+input_transformer {
+  input_paths = {
+    "documentName" = "$.detail.document-name",
+    "commandId"    = "$.detail.command-id",
+    "status"       = "$.detail.status",
+    "region"       = "$.region"
+  }
+
+  input_template = "{\
+\"Alert\": \"SSM Command Failed in Environment: ${var.env}\",\
+\"HtmlMessage\": \"<html><body><p><b>SSM Command Failure Alert</b></p><table border='1' cellpadding='5' cellspacing='0' style='border-collapse: collapse;'><tr><th>Key</th><th>Value</th></tr><tr><td>Document</td><td><documentName></td></tr><tr><td>Command ID</td><td><commandId></td></tr><tr><td>Status</td><td><status></td></tr><tr><td>Region</td><td><region></td></tr></table><p>Please check the SSM Run Command history in the AWS Console for details.</p></body></html>\"\
+}"
+}
