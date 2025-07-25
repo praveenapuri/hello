@@ -1,10 +1,1 @@
-input_transformer {
-  input_paths = {
-    documentName = "$.detail.document-name",
-    commandId    = "$.detail.command-id",
-    status       = "$.detail.status",
-    region       = "$.region"
-  }
-
-  input_template = "{ \"Message\": \"🚨 SSM Command Failed in Environment: ${var.env}\\n\\nDocument    : <documentName>\\nCommand ID  : <commandId>\\nStatus      : <status>\\nRegion      : <region>\\n\\n📌 Please check the SSM Run Command history in the AWS Console for details.\" }"
-}
+  "Message" : "{ \"Message\": \"\uD83D\uDEA8 SSM Command Failed in Environment: dev\\n\\nDocument    : epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\\nCommand ID  : 6778da7c-4e9c-4b1c-9e52-c4fe12ccfedc\\nStatus      : Failed\\nRegion      : us-east-1\\n\\n\uD83D\uDCCC Please check the SSM Run Command history in the AWS Console for details.\" }",
