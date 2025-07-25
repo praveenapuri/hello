@@ -1,74 +1,10 @@
-# --- CloudWatch Alerting for Failed SSM Commands ---
-
-# 1. SNS Topic to send notifications to
-resource "aws_sns_topic" "ssm_failure_notifications" {
-  name = "ssm-job-failure-notifications-${var.env}"
-}
-
-# 2. SNS Subscription for an email endpoint
-resource "aws_sns_topic_subscription" "email_subscription" {
-  topic_arn = aws_sns_topic.ssm_failure_notifications.arn
-  protocol  = "email"
-  endpoint  = var.notification_email
-}
-
-# 3. EventBridge Rule to detect any failed SSM command
-resource "aws_cloudwatch_event_rule" "ssm_generic_failure_rule" {
-  name        = "detect-all-ssm-job-failures-${var.env}"
-  description = "Captures failed, timed out, or cancelled commands for any SSM document."
-
-  event_pattern = jsonencode({
-    "source" : ["aws.ssm"],
-    "detail-type" : ["EC2 Command Status-change Notification"],
-    "detail" : {
-      "status" : ["Failed", "TimedOut", "Cancelled"]
-    }
-  })
-}
-
-# 4. EventBridge Target to link the rule to the SNS topic with a custom message
-resource "aws_cloudwatch_event_target" "sns_target" {
-  rule      = aws_cloudwatch_event_rule.ssm_generic_failure_rule.name
-  target_id = "SendToSNS"
-  arn       = aws_sns_topic.ssm_failure_notifications.arn
-
   # This block transforms the raw event JSON into a readable message
   input_transformer {
     input_paths = {
       "documentName" = "$.detail.document-name",
       "commandId"    = "$.detail.command-id",
       "status"       = "$.detail.status",
-      "region"       = "$.region",
-      "account"      = "$.account"
+      "region"       = "$.region"
     }
-    input_template = <<TEMPLATE
-"SSM Command Failed in AWS Account <account>.
-
-Document Name: <documentName>
-Command ID: <commandId>
-Status: <status>
-Region: <region>
-
-Please check the SSM Run Command history for details."
-TEMPLATE
+    input_template = "\"SSM Command Failed in Environment: ${var.env}.\\n\\nDocument Name: <documentName>\\nCommand ID: <commandId>\\nStatus: <status>\\nRegion: <region>\\n\\nPlease check the SSM Run Command history for details.\""
   }
-}
-
-# 5. SNS Topic Policy to allow EventBridge to publish
-resource "aws_sns_topic_policy" "ssm_eventbridge_policy" {
-  arn    = aws_sns_topic.ssm_failure_notifications.arn
-  policy = data.aws_iam_policy_document.sns_topic_policy.json
-}
-
-# Data source to construct the SNS topic policy
-data "aws_iam_policy_document" "sns_topic_policy" {
-  statement {
-    effect  = "Allow"
-    actions = ["SNS:Publish"]
-    principals {
-      type        = "Service"
-      identifiers = ["events.amazonaws.com"]
-    }
-    resources = [aws_sns_topic.ssm_failure_notifications.arn]
-  }
-}
