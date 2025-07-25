@@ -1,12 +1,13 @@
-Error: Invalid value for input variable
-│
-│   on endpoints_modules.tf line 48, in module "crud_endpoints":
-│   48:   ssm_notification_email            = var.ssm_notification_email
-│
-│ The given value is not suitable for
-│ module.crud_endpoints.var.ssm_notification_email declared at
-│ endpoints\variables.tf:190,1-34: string required.
-╵
-time=2025-07-25T16:55:12-04:00 level=error msg=terraform invocation failed in C:/Users/C8P8JH/OneDrive - CIGNA/Documents/git/dev/epic-payer-platform/module/aws/epic-payer-resources error=[C:/Users/C8P8JH/OneDrive - CIGNA/Documents/git/dev/epic-payer-platform/module/aws/epic-payer-resources] exit status 1
-time=2025-07-25T16:55:12-04:00 level=error msg=1 error occurred:
-        * [C:/Users/C8P8JH/OneDrive - CIGNA/Documents/git/dev/epic-payer-platform/module/aws/epic-payer-resources] exit status 1
+I am using email-json format and getting email like this. I need to format the "message" in the body in betterway
+
+{
+  "Type" : "Notification",
+  "MessageId" : "13147d2e-d13f-51a9-adaa-1dd324da3443",
+  "TopicArn" : "arn:aws:sns:us-east-1:650835064350:epp-dev-ssm-job-failure-notification",
+  "Message" : "{ \"Alert\": \"SSM Command Failed in Environment: dev\", \"Document\": \"epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\", \"Command ID\": \"498f99fe-dd9b-4bfd-ac15-4d86d8dca062\", \"Status\": \"Failed\", \"Region\": \"us-east-1\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }",
+  "Timestamp" : "2025-07-25T21:14:13.791Z",
+  "SignatureVersion" : "1",
+  "Signature" : "O5dZZXGCYvGxPVh5MAHVO43N/+joYcONOJRsq8LStBZuqW0mBMQLbHu+13roxXxQ7Snl7CrsoG+ybR0tioWnF2LwbWwL8MMC4zOeq6DF61M4s4AwlwFm74IwMW3YAUTaIIKp2JQphv8U51OvAgfVyrcZWQ6VBL1/qLCt41e9aFFYMMGNRlxHXd9MDMB3Vdj/tWO8gNI366qwHfA+3xx+usaVrwIKnujshm0NkuqWxBqYhDfOPumUcGlt0PsJRRZdBqgp5ac8NsrHaz+JeOeyP4OzJQkB1RwucYOziMnUPbO9VYLPePeowZ2FNWw36zYMj4qeqoN+I0IbA1gZx/s/OQ==",
+  "SigningCertURL" : "https://urldefense.com/v3/__https://sns.us-east-1.amazonaws.com/SimpleNotificationService-9c6465fa7f48f5cacd23014631ec1136.pem__;!!FEyU5bU!CIz6Y-TOYsgFQOitKVLabZCbWNm_VJP067y7lbVWBvRNICsaPbbD_ecgc66GmHrIpaSgOyM6FCaael9cwnwQSaF_VweU4LsQOA$ ",
+  "UnsubscribeURL" : "https://urldefense.com/v3/__https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:650835064350:epp-dev-ssm-job-failure-notification:7cfeed3d-815d-43a8-b757-b810f38f01c8__;!!FEyU5bU!CIz6Y-TOYsgFQOitKVLabZCbWNm_VJP067y7lbVWBvRNICsaPbbD_ecgc66GmHrIpaSgOyM6FCaael9cwnwQSaF_VwfejYkjLA$ "
+}
