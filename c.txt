@@ -1,13 +1,10 @@
-Error: creating EventBridge Target (epp-dev-detect-all-ssm-job-failures-SendToSNS): operation error EventBridge: PutTargets, https response error StatusCode: 400, RequestID: b515ef99-5374-4110-a9b4-f69baabcd74b, api error ValidationException: Invalid InputTemplate for target SendToSNS : [Source: (String)"{
-│   "Message": "SSM Command Failed in Environment: dev\n\n\
-│ Document    : null\n\
-│ Command ID  : null\n\
-│ Status      : null\n\
-│ Region      : null\n\n\
-│        Please check the SSM Run Command history in the AWS Console for details."
-│ }
-│ "; line: 2, column: 58].
-│
-│   with module.crud_endpoints.aws_cloudwatch_event_target.sns_target,
-│   on endpoints\cloudwatch-ssm-alert.tf line 30, in resource "aws_cloudwatch_event_target" "sns_target":
-│   30: resource "aws_cloudwatch_event_target" "sns_target" {
+input_transformer {
+  input_paths = {
+    documentName = "$.detail.document-name",
+    commandId    = "$.detail.command-id",
+    status       = "$.detail.status",
+    region       = "$.region"
+  }
+
+  input_template = "{ \"Message\": \"🚨 SSM Command Failed in Environment: ${var.env}\\n\\nDocument    : <documentName>\\nCommand ID  : <commandId>\\nStatus      : <status>\\nRegion      : <region>\\n\\n📌 Please check the SSM Run Command history in the AWS Console for details.\" }"
+}
