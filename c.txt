@@ -1,13 +1,19 @@
-I am using email-json format and getting email like this. I need to format the "message" in the body in betterway
+input_transformer {
+  input_paths = {
+    "documentName" = "$.detail.document-name",
+    "commandId"    = "$.detail.command-id",
+    "status"       = "$.detail.status",
+    "region"       = "$.region"
+  }
 
+  input_template = <<EOF
 {
-  "Type" : "Notification",
-  "MessageId" : "13147d2e-d13f-51a9-adaa-1dd324da3443",
-  "TopicArn" : "arn:aws:sns:us-east-1:650835064350:epp-dev-ssm-job-failure-notification",
-  "Message" : "{ \"Alert\": \"SSM Command Failed in Environment: dev\", \"Document\": \"epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\", \"Command ID\": \"498f99fe-dd9b-4bfd-ac15-4d86d8dca062\", \"Status\": \"Failed\", \"Region\": \"us-east-1\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }",
-  "Timestamp" : "2025-07-25T21:14:13.791Z",
-  "SignatureVersion" : "1",
-  "Signature" : "O5dZZXGCYvGxPVh5MAHVO43N/+joYcONOJRsq8LStBZuqW0mBMQLbHu+13roxXxQ7Snl7CrsoG+ybR0tioWnF2LwbWwL8MMC4zOeq6DF61M4s4AwlwFm74IwMW3YAUTaIIKp2JQphv8U51OvAgfVyrcZWQ6VBL1/qLCt41e9aFFYMMGNRlxHXd9MDMB3Vdj/tWO8gNI366qwHfA+3xx+usaVrwIKnujshm0NkuqWxBqYhDfOPumUcGlt0PsJRRZdBqgp5ac8NsrHaz+JeOeyP4OzJQkB1RwucYOziMnUPbO9VYLPePeowZ2FNWw36zYMj4qeqoN+I0IbA1gZx/s/OQ==",
-  "SigningCertURL" : "https://urldefense.com/v3/__https://sns.us-east-1.amazonaws.com/SimpleNotificationService-9c6465fa7f48f5cacd23014631ec1136.pem__;!!FEyU5bU!CIz6Y-TOYsgFQOitKVLabZCbWNm_VJP067y7lbVWBvRNICsaPbbD_ecgc66GmHrIpaSgOyM6FCaael9cwnwQSaF_VweU4LsQOA$ ",
-  "UnsubscribeURL" : "https://urldefense.com/v3/__https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:650835064350:epp-dev-ssm-job-failure-notification:7cfeed3d-815d-43a8-b757-b810f38f01c8__;!!FEyU5bU!CIz6Y-TOYsgFQOitKVLabZCbWNm_VJP067y7lbVWBvRNICsaPbbD_ecgc66GmHrIpaSgOyM6FCaael9cwnwQSaF_VwfejYkjLA$ "
+  "Message": "🚨 SSM Command Failed in Environment: ${var.env}\n\n\
+Document    : <documentName>\n\
+Command ID  : <commandId>\n\
+Status      : <status>\n\
+Region      : <region>\n\n\
+📌 Please check the SSM Run Command history in the AWS Console for details."
+}
+EOF
 }
