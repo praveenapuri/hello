@@ -1,19 +1,11 @@
-input_transformer {
-    input_paths = {
-      "documentName" = "$.detail.document-name",
-      "commandId"    = "$.detail.command-id",
-      "status"       = "$.detail.status",
-      "region"       = "$.region"
-    }
-    input_template = jsonencode(<<-EOT
-SSM Command Failed in Environment: ${var.env}
-
-Document Name: <documentName>
-Command ID:    <commandId>
-Status:        <status>
-Region:        <region>
-
-Please check the SSM Run Command history in the AWS Console for details.
-EOT
-    )
-  }
+{
+  "Type" : "Notification",
+  "MessageId" : "1cb9daa1-5ee4-5178-a856-bba1e26aa419",
+  "TopicArn" : "arn:aws:sns:us-east-1:650835064350:epp-dev-ssm-job-failure-notification",
+  "Message" : "\"SSM Command Failed in Environment: dev\\r\\n\\r\\nDocument Name: \\u003cdocumentName\\u003e\\r\\nCommand ID:    \\u003ccommandId\\u003e\\r\\nStatus:        \\u003cstatus\\u003e\\r\\nRegion:        \\u003cregion\\u003e\\r\\n\\r\\nPlease check the SSM Run Command history in the AWS Console for details.\\r\\n\"",
+  "Timestamp" : "2025-07-27T23:46:22.252Z",
+  "SignatureVersion" : "1",
+  "Signature" : "sNxAl/Ecuds0pvHY3xQHJGKpLHPxfDMhjPY2To9ZzaDqf063IVnqzmxEDm++BXZ1k5c0cz4DyINvfQQEE9ciroioDoX+IqqMU/QrbByVxHQAuN8lTNj9N2//Sb4FVJTRvuyQXKVYM+VGl3hurMtwt35/JmrrHvmWQLW5xnJxoeJmVARpHKH0Eb4+Qquc8pQnezxYqGUB3w2rkw70wTb2TjHeZg1IgNxqCY8ML9dU7SRfW/UbV9uEyNGI5cXxkbzOTrhPpp/b2jqchRIZbRCvnU9svpvB3bk+GhAFCBelAduQf90vK13NII0BWn+R7cVrGmAkTwHImNR4rN31YtMLEA==",
+  "SigningCertURL" : "https://urldefense.com/v3/__https://sns.us-east-1.amazonaws.com/SimpleNotificationService-9c6465fa7f48f5cacd23014631ec1136.pem__;!!FEyU5bU!EmeDuIP4AmDOyhebZgrxFofiewLDrS4f94Q3ZfdMM5g4yIMKRWSl2JEC9JtzTSvt1eAv9WsOuSIzRgS-yviHaWnajjBQRs7M9w$ ",
+  "UnsubscribeURL" : "https://urldefense.com/v3/__https://sns.us-east-1.amazonaws.com/?Action=Unsubscribe&SubscriptionArn=arn:aws:sns:us-east-1:650835064350:epp-dev-ssm-job-failure-notification:7cfeed3d-815d-43a8-b757-b810f38f01c8__;!!FEyU5bU!EmeDuIP4AmDOyhebZgrxFofiewLDrS4f94Q3ZfdMM5g4yIMKRWSl2JEC9JtzTSvt1eAv9WsOuSIzRgS-yviHaWnajjD_V4GJvg$ "
+}
