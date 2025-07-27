@@ -1,10 +1,19 @@
 input_transformer {
-  input_paths = {
-    documentName = "$.detail.document-name",
-    commandId    = "$.detail.command-id",
-    status       = "$.detail.status",
-    region       = "$.region"
-  }
+    input_paths = {
+      "documentName" = "$.detail.document-name",
+      "commandId"    = "$.detail.command-id",
+      "status"       = "$.detail.status",
+      "region"       = "$.region"
+    }
+    input_template = jsonencode(<<-EOT
+SSM Command Failed in Environment: ${var.env}
 
-  input_template = "\"🚨 SSM Command Failed in Environment: ${var.env}\\n\\nDocument    : <documentName>\\nCommand ID  : <commandId>\\nStatus      : <status>\\nRegion      : <region>\\n\\n📌 Please check the SSM Run Command history in the AWS Console for details.\""
-}
+Document Name: <documentName>
+Command ID:    <commandId>
+Status:        <status>
+Region:        <region>
+
+Please check the SSM Run Command history in the AWS Console for details.
+EOT
+    )
+  }
