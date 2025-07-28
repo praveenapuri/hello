@@ -1,1 +1,2 @@
-    input_template = "{ \"Alert\": \"SSM Command Failed in Environment: ${var.env}\", \"Document\": \"<documentName>\", \"Command ID\": \"<commandId>\", \"Status\": \"<status>\", \"Region\": \"<region>\", \"Message\": \"Please check the SSM Run Command history in the AWS Console for details.\" }"
+   input_template = "\"SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history in the AWS Console for details.\""
+ 
