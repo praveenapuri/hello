@@ -1,59 +1,72 @@
-# Variable for the notification email address
-variable "notification_email" {
-  description = "The email address to receive notifications for failed SSM jobs."
+# Variable for your secret Webex Webhook URL
+variable "webex_webhook_url" {
+  description = "The secret Webhook URL for your Webex space."
+  type        = string
+  sensitive   = true
+}
+
+# Variable for the environment name
+variable "env" {
+  description = "The environment name (e.g., dev, prod)."
   type        = string
 }
 
-# --- CloudWatch Alerting for Failed SSM Commands ---
-
-# 1. SNS Topic to send notifications to
+# 1. SNS Topic that will receive the failure notifications from EventBridge
 resource "aws_sns_topic" "ssm_failure_notifications" {
   name = "ssm-job-failure-notifications-${var.env}"
 }
 
-# 2. SNS Subscription for an email endpoint
-resource "aws_sns_topic_subscription" "email_subscription" {
-  topic_arn = aws_sns_topic.ssm_failure_notifications.arn
-  protocol  = "email"
-  endpoint  = var.notification_email
-}
+# 2. IAM Role for the Lambda Function
+resource "aws_iam_role" "sns_to_webex_lambda_role" {
+  name = "SNS-To-Webex-Lambda-Role-${var.env}"
 
-# 3. EventBridge Rule to detect any failed SSM command
-resource "aws_cloudwatch_event_rule" "ssm_generic_failure_rule" {
-  name        = "detect-all-ssm-job-failures-${var.env}"
-  description = "Captures failed, timed out, or cancelled commands for any SSM document."
-
-  event_pattern = jsonencode({
-    "source" : ["aws.ssm"],
-    "detail-type" : ["EC2 Command Status-change Notification"],
-    "detail" : {
-      "status" : ["Failed", "TimedOut", "Cancelled"]
-    }
+  assume_role_policy = jsonencode({
+    Version   = "2012-10-17",
+    Statement = [
+      {
+        Action    = "sts:AssumeRole",
+        Effect    = "Allow",
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
   })
 }
 
-# 4. EventBridge Target to link the rule to the SNS topic
-resource "aws_cloudwatch_event_target" "sns_target" {
-  rule      = aws_cloudwatch_event_rule.ssm_generic_failure_rule.name
-  target_id = "SendToSNS"
-  arn       = aws_sns_topic.ssm_failure_notifications.arn
+# 3. IAM Policy to allow the Lambda function to write logs
+resource "aws_iam_role_policy_attachment" "lambda_logs" {
+  role       = aws_iam_role.sns_to_webex_lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# 5. SNS Topic Policy to allow EventBridge to publish
-resource "aws_sns_topic_policy" "ssm_eventbridge_policy" {
-  arn    = aws_sns_topic.ssm_failure_notifications.arn
-  policy = data.aws_iam_policy_document.sns_topic_policy.json
-}
+# 4. The Lambda Function resource
+resource "aws_lambda_function" "sns_to_webex" {
+  filename      = "sns_to_webex.zip"
+  function_name = "SNS-To-Webex-Notifier-${var.env}"
+  role          = aws_iam_role.sns_to_webex_lambda_role.arn
+  handler       = "lambda_function.lambda_handler"
+  runtime       = "python3.9"
 
-# Data source to construct the SNS topic policy
-data "aws_iam_policy_document" "sns_topic_policy" {
-  statement {
-    effect  = "Allow"
-    actions = ["SNS:Publish"]
-    principals {
-      type        = "Service"
-      identifiers = ["events.amazonaws.com"]
+  environment {
+    variables = {
+      WEBEX_WEBHOOK_URL = var.webex_webhook_url
     }
-    resources = [aws_sns_topic.ssm_failure_notifications.arn]
   }
+}
+
+# 5. Permission for SNS to invoke the Lambda function
+resource "aws_lambda_permission" "allow_sns" {
+  statement_id  = "AllowExecutionFromSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.sns_to_webex.function_name
+  principal     = "sns.amazonaws.com"
+  source_arn    = aws_sns_topic.ssm_failure_notifications.arn
+}
+
+# 6. Subscribe the Lambda function to the SNS topic
+resource "aws_sns_topic_subscription" "lambda_subscription" {
+  topic_arn = aws_sns_topic.ssm_failure_notifications.arn
+  protocol  = "lambda"
+  endpoint  = aws_lambda_function.sns_to_webex.arn
 }
