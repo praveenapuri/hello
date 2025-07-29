@@ -1,2 +1,1 @@
-   input_template = "\"SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history in the AWS Console for details.\""
- 
+  "Message" : "\"SSM Command Failed in Environment: dev\\n\\n- Document Name: AWS-RunPatchBaseline\\n- Command ID: 98250fcf-d52d-418b-bdf3-2deedeca1f36\\n- Status: Failed\\n- Region: us-east-1\\n\\nPlease check the SSM Run 
