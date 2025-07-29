@@ -1,1 +1,23 @@
-"SSM Command Failed in Environment: dev\n\n- Document Name: epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\n- Command ID: c4b176c5-35d5-4515-b592-7eca7e61c712\n- Status: Failed\n- Region: us-east-1\n\nPlease check the SSM Run Command history in the AWS Console for details."
+resource "aws_cloudwatch_event_target" "sns_target" {
+  rule      = aws_cloudwatch_event_rule.ssm_generic_failure_rule.name
+  target_id = "SendToSNS"
+  arn       = aws_sns_topic.ssm_failure_notification.arn
+  # This block transforms the raw event into a structured JSON object for clean email formatting.
+  input_transformer {
+    input_paths = {
+      "documentName" = "$.detail.document-name",
+      "commandId"    = "$.detail.command-id",
+      "status"       = "$.detail.status",
+      "region"       = "$.region"
+    }
+    # This template creates a valid JSON object that SNS will format as a key-value table in email.
+    input_template = <<EOF
+      ssm command failed in environment: ${var.env}
+      document name: <documentName>
+      command id: <commandId>
+      status: <status>
+      region: <region>
+      please check the ssm run command history in the aws console for details.
+      EOF
+  }
+ }
