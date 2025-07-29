@@ -1,2 +1,1 @@
-   input_template = "\"SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history in the AWS Console for details.\""
- 
+"SSM Command Failed in Environment: dev\n\n- Document Name: epic-payer-dev-EC2-Instances-manager-cloudwatcherrortest\n- Command ID: c4b176c5-35d5-4515-b592-7eca7e61c712\n- Status: Failed\n- Region: us-east-1\n\nPlease check the SSM Run Command history in the AWS Console for details."
