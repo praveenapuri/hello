@@ -1,60 +1,9 @@
-import json
-import os
-import urllib3
-
-# Initialize the HTTP client
-http = urllib3.PoolManager()
-
-# Get the Webex Webhook URL from an environment variable for security
-WEBEX_WEBHOOK_URL = os.environ.get('WEBEX_WEBHOOK_URL')
-
-def lambda_handler(event, context):
-    """
-    This function is triggered by an SNS notification. It parses the message,
-    formats it for Webex, and sends it to the specified webhook URL.
-    """
-    if not WEBEX_WEBHOOK_URL:
-        print("ERROR: WEBEX_WEBHOOK_URL environment variable is not set.")
-        return
-
-    # 1. Extract the message from the SNS event record.
-    # The actual content from EventBridge is a string inside the SNS message.
-    sns_message_str = event['Records'][0]['Sns']['Message']
-
-    try:
-        # 2. Parse the JSON string from EventBridge to get the alert details.
-        alert_details = json.loads(sns_message_str)
-        
-        # 3. Format a clean, readable message for Webex using Markdown.
-        # This uses the keys defined in your input_transformer.
-        webex_message = (
-            f"**🚨 {alert_details.get('Alert', 'SSM Command Failed')}**\n\n"
-            f"- **Document:** {alert_details.get('Document', 'N/A')}\n"
-            f"- **Command ID:** {alert_details.get('Command ID', 'N/A')}\n"
-            f"- **Status:** {alert_details.get('Status', 'N/A')}\n"
-            f"- **Region:** {alert_details.get('Region', 'N/A')}\n\n"
-            f"_{alert_details.get('Message', 'Please investigate in the AWS Console.')}_"
-        )
-    except (json.JSONDecodeError, KeyError):
-        # If the message isn't the expected JSON, send the raw message.
-        webex_message = f"**SNS Alert:**\n\n{sns_message_str}"
-
-    # 4. Create the final JSON payload that the Webex API expects.
-    payload = {
-        "markdown": webex_message
-    }
-
-    encoded_payload = json.dumps(payload).encode('utf-8')
-    headers = {'Content-Type': 'application/json'}
-
-    try:
-        # 5. Send the HTTP POST request to the Webex Webhook URL.
-        http.request('POST', WEBEX_WEBHOOK_URL, body=encoded_payload, headers=headers)
-        print("Successfully sent notification to Webex.")
-    except Exception as e:
-        print(f"ERROR: Failed to send notification to Webex: {e}")
-        raise e
-
-    return {
-        'statusCode': 200
-    }
+╷
+│ Error: Value for unconfigurable attribute
+│
+│   with data.aws_sns_topic.alarm_funnel,
+│   on main.tf line 5, in data "aws_sns_topic" "alarm_funnel":
+│    5:   arn = "arn:aws:sns:us-east-1:746770431074:cloudwatch-alarm-funnel"
+│
+│ Can't configure a value for "arn": its value will be decided automatically
+│ based on the result of applying this configuration.
