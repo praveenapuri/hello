@@ -1,10 +1,19 @@
-resource "aws_cloudwatch_event_rule" "ssm_runcommand_failed_alarm_rule" {
-  name        = "capture-ssm-runcommand-failed-alarm-state-change"
-  description = "Triggers when the ssm_runcommand_failed alarm changes state."
+# Variable for the EC2 instance that will be the default target
+variable "default_backup_runner_instance_id" {
+  description = "The ID of the EC2 instance to use as the default target for the Route 53 backup."
+  type        = string
+}
 
-  event_pattern = jsonencode({
-    source      = ["aws.cloudwatch"],
-    "detail-type" = ["CloudWatch Alarm State Change"],
-    resources   = ["arn:aws:cloudwatch:us-east-1:140793889552:alarm:ssm_runcommand_failed"]
-  })
+# This resource creates the persistent link between your document and the target instance
+resource "aws_ssm_association" "route53_backup_association" {
+  name = aws_ssm_document.route53_backup_doc.name
+
+  # This block defines the default target for the association
+  targets {
+    key    = "InstanceIds"
+    values = [var.default_backup_runner_instance_id]
+  }
+
+  # Optional: You can also add a schedule to run this job automatically
+  # schedule_expression = "cron(0 2 * * ? *)" # Runs every day at 2 AM UTC
 }
