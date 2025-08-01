@@ -1,16 +1,56 @@
-resource "aws_cloudwatch_metric_alarm" "ssm_runcommand_failed" {
-  count               = var.Environment == "TEST" || var.Environment == "PROD" ? 1 : 0
-  alarm_name          = "ssm_runcommand_failed"
-  alarm_description   = "${var.env} | CRITICAL | Epic Payer Platform | SSM Run Command Failed"
-  alarm_actions       = [arn:aws:sns:us-east-1:746770431074:cloudwatch-alarm-funnel]
-  namespace           = "AWS/SSM-RunCommand"
-  metric_name         = "CommandsFailed"
-  statistic           = "Sum"
-  period              = 600
-  evaluation_periods  = 1
-  threshold           = 1
-  comparison_operator = "GreaterThanOrEqualToThreshold"
-  actions_enabled     = false
-  tags                = merge(local.tags, local.cigna_tags)
+# 1. Look up your existing SNS topic (your "alarm funnel") by its ARN
+data "aws_sns_topic" "alarm_funnel" {
+  arn = "arn:aws:sns:us-east-1:746770431074:cloudwatch-alarm-funnel"
 }
 
+# 2. EventBridge Rule to detect any failed SSM command in real-time
+resource "aws_cloudwatch_event_rule" "ssm_generic_failure_rule" {
+  name        = "detect-all-ssm-job-failures-${var.env}"
+  description = "Captures failed, timed out, or cancelled commands for any SSM document."
+
+  event_pattern = jsonencode({
+    "source"      = ["aws.ssm"],
+    "detail-type" = ["EC2 Command Status-change Notification"],
+    "detail" = {
+      "status" = ["Failed", "TimedOut", "Cancelled"]
+    }
+  })
+}
+
+# 3. EventBridge Target that sends a formatted notification to your existing SNS topic
+resource "aws_cloudwatch_event_target" "send_to_alarm_funnel" {
+  rule      = aws_cloudwatch_event_rule.ssm_generic_failure_rule.name
+  target_id = "SendToExistingSNSFunnel"
+  arn       = data.aws_sns_topic.alarm_funnel.arn
+
+  # This block transforms the raw event into a readable message
+  input_transformer {
+    input_paths = {
+      "documentName" = "$.detail.document-name",
+      "commandId"    = "$.detail.command-id",
+      "status"       = "$.detail.status",
+      "region"       = "$.region"
+    }
+    # This template creates a clean, multi-line plain text message
+    input_template = "\"🚨 SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history for details.\""
+  }
+}
+
+# 4. SNS Topic Policy to allow EventBridge to publish to your existing topic
+resource "aws_sns_topic_policy" "allow_eventbridge_to_publish_to_funnel" {
+  arn    = data.aws_sns_topic.alarm_funnel.arn
+  policy = data.aws_iam_policy_document.sns_topic_policy_for_funnel.json
+}
+
+# Data source to construct the SNS topic policy document
+data "aws_iam_policy_document" "sns_topic_policy_for_funnel" {
+  statement {
+    effect  = "Allow"
+    actions = ["SNS:Publish"]
+    principals {
+      type        = "Service"
+      identifiers = ["events.amazonaws.com"]
+    }
+    resources = [data.aws_sns_topic.alarm_funnel.arn]
+  }
+}
