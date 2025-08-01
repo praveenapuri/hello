@@ -1,80 +1,16 @@
-# Variable for your secret Webex Webhook URL
-variable "webex_webhook_url" {
-  description = "The secret Webhook URL for your Webex space."
-  type        = string
-  sensitive   = true
+resource "aws_cloudwatch_metric_alarm" "ssm_runcommand_failed" {
+  count               = var.Environment == "TEST" || var.Environment == "PROD" ? 1 : 0
+  alarm_name          = "ssm_runcommand_failed"
+  alarm_description   = "${var.env} | CRITICAL | Epic Payer Platform | SSM Run Command Failed"
+  alarm_actions       = [arn:aws:sns:us-east-1:746770431074:cloudwatch-alarm-funnel]
+  namespace           = "AWS/SSM-RunCommand"
+  metric_name         = "CommandsFailed"
+  statistic           = "Sum"
+  period              = 600
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  actions_enabled     = false
+  tags                = merge(local.tags, local.cigna_tags)
 }
 
-# Variable for the environment name
-variable "env" {
-  description = "The environment name (e.g., dev, prod)."
-  type        = string
-}
-
-# 1. SNS Topic that will receive the failure notifications from EventBridge
-resource "aws_sns_topic" "ssm_failure_notifications" {
-  name = "ssm-job-failure-notifications-${var.env}"
-}
-
-# 2. IAM Role for the Lambda Function
-resource "aws_iam_role" "sns_to_webex_lambda_role" {
-  name = "SNS-To-Webex-Lambda-Role-${var.env}"
-
-  assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [
-      {
-        Action    = "sts:AssumeRole",
-        Effect    = "Allow",
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_lambda_permission" "allow_sns_to_invoke_lambda" {
-  statement_id  = "AllowExecutionFromSNS"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.sns_to_webex.function_name
-  principal     = "sns.amazonaws.com"
-  source_arn    = aws_sns_topic.ssm_failure_notifications.arn
-}
-
-# 3. IAM Policy to allow the Lambda function to write logs
-resource "aws_iam_role_policy_attachment" "lambda_logs" {
-  role       = aws_iam_role.sns_to_webex_lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
-
-# 4. The Lambda Function resource
-resource "aws_lambda_function" "sns_to_webex" {
-  filename      = "sns_to_webex.zip"
-  function_name = "SNS-To-Webex-Notifier-${var.env}"
-  role          = aws_iam_role.sns_to_webex_lambda_role.arn
-  handler       = "lambda_function.lambda_handler"
-  runtime       = "python3.9"
-
-  environment {
-    variables = {
-      WEBEX_WEBHOOK_URL = var.webex_webhook_url
-    }
-  }
-}
-
-# 5. Permission for SNS to invoke the Lambda function
-resource "aws_lambda_permission" "allow_sns" {
-  statement_id  = "AllowExecutionFromSNS"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.sns_to_webex.function_name
-  principal     = "sns.amazonaws.com"
-  source_arn    = aws_sns_topic.ssm_failure_notifications.arn
-}
-
-# 6. Subscribe the Lambda function to the SNS topic
-resource "aws_sns_topic_subscription" "lambda_subscription" {
-  topic_arn = aws_sns_topic.ssm_failure_notifications.arn
-  protocol  = "lambda"
-  endpoint  = aws_lambda_function.sns_to_webex.arn
-}
