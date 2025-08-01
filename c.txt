@@ -1,9 +1,6 @@
-╷
-│ Error: Value for unconfigurable attribute
+ Error: creating EventBridge Target (epp-test-detect-all-ssm-job-failures-SendToAlarmFunnel): operation error EventBridge: PutTargets, https response error StatusCode: 400, RequestID: 83752dea-fec8-4a60-a9f2-1e8720e3e5bf, api error ValidationException: RoleArn is required for target arn:aws:sns:us-east-1:746770431074:cloudwatch-alarm-funnel.
 │
-│   with data.aws_sns_topic.alarm_funnel,
-│   on main.tf line 5, in data "aws_sns_topic" "alarm_funnel":
-│    5:   arn = "arn:aws:sns:us-east-1:746770431074:cloudwatch-alarm-funnel"
+│   with aws_cloudwatch_event_target.send_to_alarm_funnel,
+│   on main.tf line 19, in resource "aws_cloudwatch_event_target" "send_to_alarm_funnel":
+│   19: resource "aws_cloudwatch_event_target" "send_to_alarm_funnel" {
 │
-│ Can't configure a value for "arn": its value will be decided automatically
-│ based on the result of applying this configuration.
