@@ -1,81 +1,11 @@
-# Variable for the ARN of the cross-account SNS topic
-variable "cross_account_sns_funnel_arn" {
-  description = "The full ARN of the SNS topic in the central account to send alerts to."
-  type        = string
-}
-
-# 1. IAM Role for EventBridge to publish to the cross-account SNS topic
-resource "aws_iam_role" "eventbridge_cross_account_sns_role" {
-  name = "EventBridge-CrossAccount-SNS-Publish-Role-${var.env}"
-
-  assume_role_policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [
-      {
-        Action    = "sts:AssumeRole",
-        Effect    = "Allow",
-        Principal = {
-          Service = "events.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-# 2. IAM Policy granting the role permission to publish to the specific SNS topic
-resource "aws_iam_policy" "eventbridge_cross_account_sns_policy" {
-  name        = "EventBridge-CrossAccount-SNS-Publish-Policy-${var.env}"
-  description = "Allows EventBridge to publish to the central alarm funnel SNS topic."
-
-  policy = jsonencode({
-    Version   = "2012-10-17",
-    Statement = [
-      {
-        Effect   = "Allow",
-        Action   = "sns:Publish",
-        Resource = var.cross_account_sns_funnel_arn
-      }
-    ]
-  })
-}
-
-# Attach the policy to the role
-resource "aws_iam_role_policy_attachment" "eventbridge_sns_policy_attach" {
-  role       = aws_iam_role.eventbridge_cross_account_sns_role.name
-  policy_arn = aws_iam_policy.eventbridge_cross_account_sns_policy.arn
-}
-
-
-# 3. EventBridge Rule to detect any failed SSM command in real-time
-resource "aws_cloudwatch_event_rule" "ssm_generic_failure_rule" {
-  name        = "detect-all-ssm-job-failures-${var.env}"
-  description = "Captures failed, timed out, or cancelled commands for any SSM document."
-
-  event_pattern = jsonencode({
-    "source"      = ["aws.ssm"],
-    "detail-type" = ["EC2 Command Status-change Notification"],
-    "detail" = {
-      "status" = ["Failed", "TimedOut", "Cancelled"]
-    }
-  })
-}
-
-# 4. EventBridge Target that sends a formatted notification to your existing cross-account SNS topic
-resource "aws_cloudwatch_event_target" "send_to_alarm_funnel" {
-  rule      = aws_cloudwatch_event_rule.ssm_generic_failure_rule.name
-  target_id = "SendToCrossAccountSNSFunnel"
-  arn       = var.cross_account_sns_funnel_arn
-  role_arn  = aws_iam_role.eventbridge_cross_account_sns_role.arn # Add the role ARN here
-
-  # This block transforms the raw event into a readable message
-  input_transformer {
-    input_paths = {
-      "documentName" = "$.detail.document-name",
-      "commandId"    = "$.detail.command-id",
-      "status"       = "$.detail.status",
-      "region"       = "$.region"
-    }
-    # This template creates a clean, multi-line plain text message
-    input_template = "\"🚨 SSM Command Failed in Environment: ${var.env}\\n\\n- Document Name: <documentName>\\n- Command ID: <commandId>\\n- Status: <status>\\n- Region: <region>\\n\\nPlease check the SSM Run Command history for details.\""
-  }
+{
+  "source": [
+    "aws.cloudwatch"
+  ],
+  "detail-type": [
+    "CloudWatch Alarm State Change"
+  ],
+  "resources": [
+    "arn:aws:cloudwatch:us-east-1:140793889552:alarm:ssm_runcommand_failed"
+  ]
 }
