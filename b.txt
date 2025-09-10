@@ -1,5 +1,26 @@
-org.jenkinsci.plugins.workflow.actions.ErrorAction$ErrorId: 7c2b93f1-2be5-4d42-be79-aa52313cd088
-hudson.AbortException: Plz Deployment: script returned exit code 127
-	at com.cigna.common.phases.PhaseExecution.executePhase(PhaseExecution.groovy:63)
-	at com.cigna.common.phases.PhaseExecution.runPhases(PhaseExecution.groovy:100)
-	at com.cigna.common.phases.PodSelector.podTemplate(PodSelector.groovy:465)
+// ... inside the deployment phase
+          branchPattern  : ".*",
+          container: [
+              image  : "${containerImage}",
+              version: "${containerVersion}"
+              // YOU MAY NEED TO ADD A 'resources' BLOCK HERE
+              // THE SYNTAX WILL DEPEND ON YOUR SHARED LIBRARY
+              // Below are common examples - you may need to experiment
+              /* Example 1:
+              resources: [
+                  requests: [
+                      cpu: '2000m',
+                      memory: '19000Mi'
+                  ],
+                  limits: [
+                      cpu: '2000m',
+                      memory: '19000Mi'
+                  ]
+              ]
+              */
+              /* Example 2:
+              cpu: "${containerCpu}m",
+              memory: "${containerMemory}Mi"
+              */
+          ],
+// ...
