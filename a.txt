@@ -1,47 +1,114 @@
-# 1. The main (publishing) SNS Topic
-resource "aws_sns_topic" "topic_a" {
-  name = "my-central-publishing-topic"
+@Library('epf@main') _
+env.TERRAFORM_VERSION = '1.6.6'
+env.TERRAGRUNT_VERSION = '0.54.7'
+
+switch(env.BRANCH_NAME) {
+  case "develop":
+    env.ACCOUNT_NUMBER = "650835064350"
+    env.ENV = "dev"
+    break
+  case "release":
+    env.ACCOUNT_NUMBER = "140793889552"
+    env.ENV = "test"
+    break
+  case "main":
+    env.ACCOUNT_NUMBER = "547345051645"
+    env.ENV = "prod"
+    break
+  default:
+    env.ACCOUNT_NUMBER = "650835064350"
+    env.ENV = "dev"
+    break
 }
 
-# 2. The secondary (subscribing) SNS Topic
-resource "aws_sns_topic" "topic_b" {
-  name = "my-specialized-subscribing-topic"
-}
+env.AUTH_TYPE = 'gatekeeper'
+env.REGION = "us-east-1"
 
-# 3. The subscription that links Topic A to Topic B
-resource "aws_sns_topic_subscription" "topic_a_to_topic_b" {
-  topic_arn = aws_sns_topic.topic_a.arn
-  protocol  = "sns"
-  endpoint  = aws_sns_topic.topic_b.arn
-}
+echo "BRANCH_NAME = ${env.BRANCH_NAME}"
+echo "ENV = ${env.ENV}"
 
-# 4. The resource-based policy attached to Topic B
-# This is the critical step that grants Topic A permission to publish to Topic B.
-resource "aws_sns_topic_policy" "allow_topic_a_to_publish" {
-  arn    = aws_sns_topic.topic_b.arn
-  policy = data.aws_iam_policy_document.sns_topic_policy.json
-}
+String DeployerRole = "Enterprise/EPPDEPLOYER"
+String targetAccount = "${ACCOUNT_NUMBER}"
+String cloudServiceAccountName = "jenkins-robot-${ENV.toLowerCase()}"
+env.TERRAGRUNT_IAM_ROLE = "arn:aws:iam::${ACCOUNT_NUMBER}:role/${DeployerRole}"
 
-# Data source to construct the SNS topic policy document
-data "aws_iam_policy_document" "sns_topic_policy" {
-  statement {
-    effect  = "Allow"
-    actions = ["SNS:Publish"]
+//String containerImage  = "registry.cigna.com/enterprise-devops/aws-d-megatainer"
+//String containerVersion = "1.0.14-2"
+String containerImage  = 'registry.cigna.com/enterprise-devops/aws-d-cloudkit'
+String containerVersion = 'plz-2'
+Integer containerCpu = 2000
+Integer containerMemory = 19000
 
-    principals {
-      type        = "Service"
-      identifiers = ["sns.amazonaws.com"]
-    }
+// other variables for pipeline
+String sdlcEnvName = "${ENV.toUpperCase()}";
 
-    resources = [
-      aws_sns_topic.topic_b.arn,
+String cloudNameOS = "epic-payer-platform-openshift-devops1"
+String cloudNameEKS = "epic-payer-platform-eks-jenkins-cluster-prod"
+
+ List<String> modules = []
+
+ env.MODULES_LIST = modules.toString().replace("[", "").replace("]", "")
+
+// Pipeline
+cignaBuildFlow {
+    cloudName = "${cloudNameEKS}"
+    githubConnectionName = "cigna-github"
+    additionalProperties = [
+            parameters([
+                    choice(name: 'MODULE_TYPE', description: 'Choose the type of resource',
+                            choices: [
+                                    'aws',
+                                    'test'
+                            ]),
+                    choice(name: 'MODULE_NAME', description: 'Choose the module name',
+                            choices: [
+                                    '---',
+                                    'epic-payer-vpc',
+                                    'epic-payer-vpc-secondary',
+                                    'epic-payer-lambda-layer',
+                                    'epic-payer-resources',
+                                    'epic-payer-s3-efs-filetransfer',
+                                    'epic-payer-s3-fsx-filetransfer',
+                                    'epic-payer-fsx-efs-dynamicmemberload',
+                                    'epic-payer-fsx-efs-filetransfer',
+                                    'epic-payer-certs',
+                                    'epic-payer-efs',
+                                    'epic-payer-vpc-dr',
+                                    'epic-payer-resources-dr',
+                                    'test'
+                            ]),
+                    choice(name: 'PLZ_ALIAS', description: 'The Terraform action to take',
+                           choices: ['---', 'plan', 'deploy'], defaultValue: '---'),
+                    string(name: 'TF_TARGET', description: 'Terraform target', defaultValue: '', trim: true)
+            ]),
+
     ]
+    phases = [
+        [
+            deploymentType  : 'plz',
+            alias           :  '${PLZ_ALIAS}',
+            extraArgs       : 'job',
+            sdlcEnvironment : "Deploy AWS resources to ${sdlcEnvName}",
+            runInAWS: true,
+            cloudName: "${cloudNameEKS}",
+            aws:
+            [
+                cloudServiceAccountName: "${cloudServiceAccountName}",
+                targetAccount: "${targetAccount}",
+                accountRoleName: "${DeployerRole}"
+            ],
+            branchPattern   : ".*",
+            container: [
+                image  : "${containerImage}",
+                version: "${containerVersion}"
+            ],
+            verbosityFlag   : '-vvv',
+            isProductionDeployment: false,
+            withEnv: [
+                'PATH=/home/jenkins/.nvm/versions/node/v16.15.0/bin:/home/jenkins/.cargo/bin:/home/jenkins/go/bin:/home/jenkins/.bin:/home/jenkins/.please:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:/var/lang/bin',
+                'ENV=dev'
+            ]
+        ]
 
-    # This condition ensures that only Topic A can publish to Topic B
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:SourceArn"
-      values   = [aws_sns_topic.topic_a.arn]
-    }
-  }
+      ]
 }
