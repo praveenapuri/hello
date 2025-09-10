@@ -1,26 +1,63 @@
-// ... inside the deployment phase
-          branchPattern  : ".*",
-          container: [
-              image  : "${containerImage}",
-              version: "${containerVersion}"
-              // YOU MAY NEED TO ADD A 'resources' BLOCK HERE
-              // THE SYNTAX WILL DEPEND ON YOUR SHARED LIBRARY
-              // Below are common examples - you may need to experiment
-              /* Example 1:
-              resources: [
-                  requests: [
-                      cpu: '2000m',
-                      memory: '19000Mi'
-                  ],
-                  limits: [
-                      cpu: '2000m',
-                      memory: '19000Mi'
-                  ]
-              ]
-              */
-              /* Example 2:
-              cpu: "${containerCpu}m",
-              memory: "${containerMemory}Mi"
-              */
-          ],
-// ...
+Also:   org.jenkinsci.plugins.workflow.actions.ErrorAction$ErrorId: a311156b-7473-44cb-bf83-43e458a92c5e
+hudson.AbortException: Plz Deployment: script returned exit code -2
+	at com.cigna.common.phases.PhaseExecution.executePhase(PhaseExecution.groovy:63)
+	at com.cigna.common.phases.PhaseExecution.runPhases(PhaseExecution.groovy:100)
+	at com.cigna.common.phases.PodSelector.podTemplate(PodSelector.groovy:465)
+	at ___cps.transform___(Native Method)
+	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:502)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:486)
+	at org.codehaus.groovy.reflection.CachedConstructor.invoke(CachedConstructor.java:83)
+	at org.codehaus.groovy.reflection.CachedConstructor.doConstructorInvoke(CachedConstructor.java:77)
+	at org.codehaus.groovy.runtime.callsite.ConstructorSite$ConstructorSiteNoUnwrap.callConstructor(ConstructorSite.java:84)
+	at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCallConstructor(CallSiteArray.java:59)
+	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callConstructor(AbstractCallSite.java:238)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.sandbox.DefaultInvoker.constructorCall(DefaultInvoker.java:25)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.LoggingInvoker.constructorCall(LoggingInvoker.java:123)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.FunctionCallBlock$ContinuationImpl.dispatchOrArg(FunctionCallBlock.java:100)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.FunctionCallBlock$ContinuationImpl.fixArg(FunctionCallBlock.java:85)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ContinuationPtr$ContinuationImpl.receive(ContinuationPtr.java:72)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.FunctionCallBlock$ContinuationImpl.dispatchOrArg(FunctionCallBlock.java:110)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.FunctionCallBlock$ContinuationImpl.fixArg(FunctionCallBlock.java:85)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ContinuationPtr$ContinuationImpl.receive(ContinuationPtr.java:72)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.CastBlock$ContinuationImpl.cast(CastBlock.java:47)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ContinuationPtr$ContinuationImpl.receive(ContinuationPtr.java:72)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.CollectionLiteralBlock$ContinuationImpl.dispatch(CollectionLiteralBlock.java:55)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.CollectionLiteralBlock$ContinuationImpl.item(CollectionLiteralBlock.java:45)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ContinuationPtr$ContinuationImpl.receive(ContinuationPtr.java:72)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.impl.ConstantBlock.eval(ConstantBlock.java:21)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.Next.step(Next.java:83)
+	at PluginClassLoader for workflow-cps//com.cloudbees.groovy.cps.Continuable.run0(Continuable.java:147)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.SandboxContinuable.access$001(SandboxContinuable.java:17)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.SandboxContinuable.run0(SandboxContinuable.java:49)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThread.runNextChunk(CpsThread.java:180)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThreadGroup.run(CpsThreadGroup.java:422)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThreadGroup$2.call(CpsThreadGroup.java:330)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsThreadGroup$2.call(CpsThreadGroup.java:294)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService.lambda$wrap$4(CpsVmExecutorService.java:140)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at hudson.remoting.SingleLaneExecutorService$1.run(SingleLaneExecutorService.java:139)
+	at jenkins.util.ContextResettingExecutorService$1.run(ContextResettingExecutorService.java:28)
+	at jenkins.security.ImpersonatingExecutorService$1.run(ImpersonatingExecutorService.java:68)
+	at jenkins.util.ErrorLoggingExecutorService.lambda$wrap$0(ErrorLoggingExecutorService.java:51)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService$1.call(CpsVmExecutorService.java:53)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService$1.call(CpsVmExecutorService.java:50)
+	at org.codehaus.groovy.runtime.GroovyCategorySupport$ThreadCategoryInfo.use(GroovyCategorySupport.java:136)
+	at org.codehaus.groovy.runtime.GroovyCategorySupport.use(GroovyCategorySupport.java:275)
+	at PluginClassLoader for workflow-cps//org.jenkinsci.plugins.workflow.cps.CpsVmExecutorService.lambda$categoryThreadFactory$0(CpsVmExecutorService.java:50)
+	at java.base/java.lang.Thread.run(Thread.java:1583)
+
+[Pipeline] echo
+{"scm":{"repo":"https://github.sys.cigna.com/cigna/epic-payer-platform.git","gitCommit":"f9553ee41c87eaf6ef498ade916264491997e5f6"},"orchestrator":{"jobName":"orchestrators-folders/epic-payer-platform/Non-Production/aws/epic-payer-platform/epf-test","buildNumber":"41","branchName":"epf-test","node":null,"timeInPipeline":"6 min 44 sec and counting"},"epf":{"stage":"End of Build","message":"Build Failed","userProvidedConfig":{"cloudName":"epic-payer-platform-eks-jenkins-cluster-prod","githubConnectionName":"cigna-github","additionalProperties":[{"arguments":{"<anonymous>":[{"arguments":{"name":"MODULE_TYPE","description":"Choose the type of resource","choices":["aws","test"]},"klass":null,"symbol":"choice","model":null,"interpolatedStrings":[]},{"arguments":{"name":"MODULE_NAME","description":"Choose the module name","choices":["---","epic-payer-vpc","epic-payer-vpc-secondary","epic-payer-lambda-layer","epic-payer-resources","epic-payer-s3-efs-filetransfer","epic-payer-s3-fsx-filetransfer","epic-payer-fsx-efs-dynamicmemberload","epic-payer-fsx-efs-filetransfer","epic-payer-certs","epic-payer-efs","epic-payer-vpc-dr","epic-payer-resources-dr","test"]},"klass":null,"symbol":"choice","model":null,"interpolatedStrings":[]},{"arguments":{"name":"PLZ_ALIAS","description":"The Terraform action to take","choices":["---","plan","deploy"],"defaultValue":"---"},"klass":null,"symbol":"choice","model":null,"interpolatedStrings":[]},{"arguments":{"name":"TF_TARGET","description":"Terraform target","defaultValue":"","trim":true},"klass":null,"symbol":"string","model":null,"interpolatedStrings":[]}]},"klass":null,"symbol":"parameters","model":null,"interpolatedStrings":[]}],"adjudicatorEnvironment":"prod","phaseCache":false,"resourceStrategy":"","checkmarxEnabled":true,"sonarEnabled":true,"resourceScaleFactor":4,"stashIncludePattern":"","stashExcludePattern":""}}}
