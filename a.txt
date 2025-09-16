@@ -1,37 +1,25 @@
 # main.tf
 
-# 1. Configure the AWS Provider
-provider "aws" {
-  region = "us-east-1"
-}
-
-# 2. Dynamically retrieve details of all EC2 instances with a specific tag
+# 1. Dynamically retrieve details of EC2 instances with a specific tag
 data "aws_instances" "monitored_instances" {
-  # Find instances that are in the 'running' or 'pending' state
+  # The provider's region is automatically used for this data lookup.
   filter {
     name   = "instance-state-name"
     values = ["running", "pending"]
   }
 
-  # Find instances that have the tag "Monitoring" with the value "enabled"
   filter {
     name   = "tag:Monitoring"
     values = ["enabled"]
   }
 }
 
-# 3. Use a for loop to dynamically build the dashboard configurations
+# 2. Dynamically build the dashboard configurations
 locals {
-  aws_region = "us-east-1"
-
   ec2_dashboards = {
-    # This for loop iterates over the IDs found by the data source
     for id in data.aws_instances.monitored_instances.ids :
-    # The map key becomes the instance ID
     id => {
       instance_id      = id
-      # You can add default disk configurations here if they are consistent.
-      # For more advanced setups, you could use instance tags to define these values.
       disk_device      = "nvme0n1p1"
       disk_path        = "/"
       file_system_type = "xfs"
@@ -39,11 +27,14 @@ locals {
   }
 }
 
-# 4. Create the CloudWatch Dashboard resource using the dynamically generated map
+# 3. Create the CloudWatch Dashboard resource
 resource "aws_cloudwatch_dashboard" "ec2" {
   for_each = local.ec2_dashboards
 
-  dashboard_name = "EC2-Health-${each.value.instance_id}" # Use the instance ID in the name
+  # The 'region' property in the dashboard body still points to the region
+  # where the metric resides. It's best practice to set it explicitly here.
+  # We can get it directly from the provider configuration using an attribute.
+  dashboard_name = "EC2-Health-${each.value.instance_id}"
 
   dashboard_body = jsonencode({
     widgets = [
@@ -55,7 +46,7 @@ resource "aws_cloudwatch_dashboard" "ec2" {
           metrics     = [["AWS/EC2", "CPUUtilization", "InstanceId", each.value.instance_id]],
           period      = 300,
           stat        = "Average",
-          region      = local.aws_region,
+          region      = provider.aws.region, # Inherits region from the provider
           title       = "EC2 CPU Utilization (%)",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
@@ -69,7 +60,7 @@ resource "aws_cloudwatch_dashboard" "ec2" {
           metrics     = [["CWAgent", "mem_used_percent", "InstanceId", each.value.instance_id]],
           period      = 300,
           stat        = "Average",
-          region      = local.aws_region,
+          region      = provider.aws.region, # Inherits region from the provider
           title       = "Memory Utilization (%)",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
@@ -89,7 +80,7 @@ resource "aws_cloudwatch_dashboard" "ec2" {
           ]],
           period      = 300,
           stat        = "Average",
-          region      = local.aws_region,
+          region      = provider.aws.region, # Inherits region from the provider
           title       = "Disk Utilization (%) on ${each.value.disk_path}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
@@ -99,7 +90,7 @@ resource "aws_cloudwatch_dashboard" "ec2" {
   })
 }
 
-# 5. (Optional) Output the names of the created dashboards
+# 4. (Optional) Outputs
 output "created_dashboard_names" {
   description = "A map of the names of all created CloudWatch dashboards."
   value       = { for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_name }
