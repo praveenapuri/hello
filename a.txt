@@ -1,114 +1,106 @@
-@Library('epf@main') _
-env.TERRAFORM_VERSION = '1.6.6'
-env.TERRAGRUNT_VERSION = '0.54.7'
+# main.tf
 
-switch(env.BRANCH_NAME) {
-  case "develop":
-    env.ACCOUNT_NUMBER = "650835064350"
-    env.ENV = "dev"
-    break
-  case "release":
-    env.ACCOUNT_NUMBER = "140793889552"
-    env.ENV = "test"
-    break
-  case "main":
-    env.ACCOUNT_NUMBER = "547345051645"
-    env.ENV = "prod"
-    break
-  default:
-    env.ACCOUNT_NUMBER = "650835064350"
-    env.ENV = "dev"
-    break
+# Define the provider and region
+provider "aws" {
+  region = "us-east-1" # Specify your desired AWS region
 }
 
-env.AUTH_TYPE = 'gatekeeper'
-env.REGION = "us-east-1"
+# --- Variables for Customization ---
 
-echo "BRANCH_NAME = ${env.BRANCH_NAME}"
-echo "ENV = ${env.ENV}"
+variable "instance_id" {
+  description = "The ID of the EC2 instance to monitor."
+  type        = string
+  default     = "i-0123456789abcdef0" # Replace with your actual EC2 instance ID
+}
 
-String DeployerRole = "Enterprise/EPPDEPLOYER"
-String targetAccount = "${ACCOUNT_NUMBER}"
-String cloudServiceAccountName = "jenkins-robot-${ENV.toLowerCase()}"
-env.TERRAGRUNT_IAM_ROLE = "arn:aws:iam::${ACCOUNT_NUMBER}:role/${DeployerRole}"
+variable "disk_device" {
+  description = "The disk device to monitor (e.g., nvme0n1p1 for root on Nitro-based instances, xvda1 for others)."
+  type        = string
+  default     = "nvme0n1p1"
+}
 
-//String containerImage  = "registry.cigna.com/enterprise-devops/aws-d-megatainer"
-//String containerVersion = "1.0.14-2"
-String containerImage  = 'registry.cigna.com/enterprise-devops/aws-d-cloudkit'
-String containerVersion = 'plz-2'
-Integer containerCpu = 2000
-Integer containerMemory = 19000
+variable "disk_path" {
+  description = "The mount path of the disk to monitor (e.g., /)."
+  type        = string
+  default     = "/"
+}
 
-// other variables for pipeline
-String sdlcEnvName = "${ENV.toUpperCase()}";
+variable "file_system_type" {
+  description = "The file system type of the disk (e.g., xfs, ext4)."
+  type        = string
+  default     = "xfs"
+}
 
-String cloudNameOS = "epic-payer-platform-openshift-devops1"
-String cloudNameEKS = "epic-payer-platform-eks-jenkins-cluster-prod"
 
- List<String> modules = []
+# --- CloudWatch Dashboard Resource ---
 
- env.MODULES_LIST = modules.toString().replace("[", "").replace("]", "")
+resource "aws_cloudwatch_dashboard" "ec2_health_dashboard" {
+  dashboard_name = "EC2_Health_Dashboard-${var.instance_id}"
 
-// Pipeline
-cignaBuildFlow {
-    cloudName = "${cloudNameEKS}"
-    githubConnectionName = "cigna-github"
-    additionalProperties = [
-            parameters([
-                    choice(name: 'MODULE_TYPE', description: 'Choose the type of resource',
-                            choices: [
-                                    'aws',
-                                    'test'
-                            ]),
-                    choice(name: 'MODULE_NAME', description: 'Choose the module name',
-                            choices: [
-                                    '---',
-                                    'epic-payer-vpc',
-                                    'epic-payer-vpc-secondary',
-                                    'epic-payer-lambda-layer',
-                                    'epic-payer-resources',
-                                    'epic-payer-s3-efs-filetransfer',
-                                    'epic-payer-s3-fsx-filetransfer',
-                                    'epic-payer-fsx-efs-dynamicmemberload',
-                                    'epic-payer-fsx-efs-filetransfer',
-                                    'epic-payer-certs',
-                                    'epic-payer-efs',
-                                    'epic-payer-vpc-dr',
-                                    'epic-payer-resources-dr',
-                                    'test'
-                            ]),
-                    choice(name: 'PLZ_ALIAS', description: 'The Terraform action to take',
-                           choices: ['---', 'plan', 'deploy'], defaultValue: '---'),
-                    string(name: 'TF_TARGET', description: 'Terraform target', defaultValue: '', trim: true)
-            ]),
-
-    ]
-    phases = [
-        [
-            deploymentType  : 'plz',
-            alias           :  '${PLZ_ALIAS}',
-            extraArgs       : 'job',
-            sdlcEnvironment : "Deploy AWS resources to ${sdlcEnvName}",
-            runInAWS: true,
-            cloudName: "${cloudNameEKS}",
-            aws:
-            [
-                cloudServiceAccountName: "${cloudServiceAccountName}",
-                targetAccount: "${targetAccount}",
-                accountRoleName: "${DeployerRole}"
-            ],
-            branchPattern   : ".*",
-            container: [
-                image  : "${containerImage}",
-                version: "${containerVersion}"
-            ],
-            verbosityFlag   : '-vvv',
-            isProductionDeployment: false,
-            withEnv: [
-                'PATH=/home/jenkins/.nvm/versions/node/v16.15.0/bin:/home/jenkins/.cargo/bin:/home/jenkins/go/bin:/home/jenkins/.bin:/home/jenkins/.please:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:/var/lang/bin',
-                'ENV=dev'
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 8
+        height = 6
+        properties = {
+          metrics = [
+            ["AWS/EC2", "CPUUtilization", "InstanceId", var.instance_id]
+          ]
+          period = 300
+          stat   = "Average"
+          region = "us-east-1" # Ensure this matches your provider region
+          title  = "EC2 CPU Utilization (%)"
+          yAxis = {
+            left = {
+              min = 0
+              max = 100
+            }
+          }
+          annotations = {
+            horizontal = [
+              {
+                color = "#ff0000"
+                label = "Threshold 80%"
+                value = 80
+              }
             ]
-        ]
-
-      ]
-}
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      = 8
+        y      = 0
+        width  = 8
+        height = 6
+        properties = {
+          metrics = [
+            ["CWAgent", "mem_used_percent", "InstanceId", var.instance_id]
+          ]
+          period = 300
+          stat   = "Average"
+          region = "us-east-1"
+          title  = "Memory Utilization (%)"
+          yAxis = {
+            left = {
+              min = 0
+              max = 100
+            }
+          }
+          annotations = {
+            horizontal = [
+              {
+                color = "#ff0000"
+                label = "Threshold 80%"
+                value = 80
+              }
+            ]
+          }
+        }
+      },
+      {
+        type   = "metric"
+        x      =
