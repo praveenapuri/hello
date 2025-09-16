@@ -5,25 +5,33 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# 2. Define all dashboard configurations in a locals block
+# 2. Dynamically retrieve details of all EC2 instances with a specific tag
+data "aws_instances" "monitored_instances" {
+  # Find instances that are in the 'running' or 'pending' state
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
+
+  # Find instances that have the tag "Monitoring" with the value "enabled"
+  filter {
+    name   = "tag:Monitoring"
+    values = ["enabled"]
+  }
+}
+
+# 3. Use a for loop to dynamically build the dashboard configurations
 locals {
   aws_region = "us-east-1"
 
   ec2_dashboards = {
-    "prod-web-server-01" = {
-      instance_id      = "i-0abcdef1234567890"
-      disk_device      = "nvme0n1p1"
-      disk_path        = "/"
-      file_system_type = "xfs"
-    }
-    "prod-db-server-01" = {
-      instance_id      = "i-0987654321fedcba0"
-      disk_device      = "xvda1"
-      disk_path        = "/data"
-      file_system_type = "ext4"
-    }
-    "staging-app-server" = {
-      instance_id      = "i-0a1b2c3d4e5f6g7h8"
+    # This for loop iterates over the IDs found by the data source
+    for id in data.aws_instances.monitored_instances.ids :
+    # The map key becomes the instance ID
+    id => {
+      instance_id      = id
+      # You can add default disk configurations here if they are consistent.
+      # For more advanced setups, you could use instance tags to define these values.
       disk_device      = "nvme0n1p1"
       disk_path        = "/"
       file_system_type = "xfs"
@@ -31,12 +39,11 @@ locals {
   }
 }
 
-# 3. Create the CloudWatch Dashboard resource using for_each
+# 4. Create the CloudWatch Dashboard resource using the dynamically generated map
 resource "aws_cloudwatch_dashboard" "ec2" {
-  # Create a dashboard for each item in the locals.ec2_dashboards map
   for_each = local.ec2_dashboards
 
-  dashboard_name = "EC2-Health-${each.key}" # 'each.key' is the name, e.g., "prod-web-server-01"
+  dashboard_name = "EC2-Health-${each.value.instance_id}" # Use the instance ID in the name
 
   dashboard_body = jsonencode({
     widgets = [
@@ -92,8 +99,13 @@ resource "aws_cloudwatch_dashboard" "ec2" {
   })
 }
 
-# 4. (Optional) Output the names of the created dashboards
+# 5. (Optional) Output the names of the created dashboards
 output "created_dashboard_names" {
   description = "A map of the names of all created CloudWatch dashboards."
   value       = { for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_name }
+}
+
+output "instances_found" {
+  description = "List of EC2 instance IDs found with the specified tag."
+  value       = data.aws_instances.monitored_instances.ids
 }
