@@ -2,7 +2,6 @@
 
 # 1. Dynamically retrieve details of EC2 instances with a specific tag
 data "aws_instances" "monitored_instances" {
-  # The provider's region is automatically used for this data lookup.
   filter {
     name   = "instance-state-name"
     values = ["running", "pending"]
@@ -14,89 +13,90 @@ data "aws_instances" "monitored_instances" {
   }
 }
 
-# 2. Dynamically build the dashboard configurations
+# 2. Dynamically build a single list of widgets for all instances
 locals {
-  ec2_dashboards = {
-    for id in data.aws_instances.monitored_instances.ids :
-    id => {
-      instance_id      = id
-      disk_device      = "nvme0n1p1"
-      disk_path        = "/"
-      file_system_type = "xfs"
-    }
-  }
-}
-
-# 3. Create the CloudWatch Dashboard resource
-resource "aws_cloudwatch_dashboard" "ec2" {
-  for_each = local.ec2_dashboards
-
-  # The 'region' property in the dashboard body still points to the region
-  # where the metric resides. It's best practice to set it explicitly here.
-  # We can get it directly from the provider configuration using an attribute.
-  dashboard_name = "EC2-Health-${each.value.instance_id}"
-
-  dashboard_body = jsonencode({
-    widgets = [
-      # CPU Utilization Widget
+  # Use flatten to create one big list of widgets from our loops
+  all_widgets = flatten([
+    # Loop over each instance ID found by the data source
+    for index, instance_id in data.aws_instances.monitored_instances.ids : [
+      # Widget 1: CPU Utilization for this instance
       {
         type   = "metric",
-        x      = 0, y = 0, width = 8, height = 6,
+        x      = 0,
+        y      = index * 6, # Arrange widgets in rows based on instance index
+        width  = 8,
+        height = 6,
         properties = {
-          metrics     = [["AWS/EC2", "CPUUtilization", "InstanceId", each.value.instance_id]],
+          metrics     = [["AWS/EC2", "CPUUtilization", "InstanceId", instance_id]],
           period      = 300,
           stat        = "Average",
-          region      = provider.aws.region, # Inherits region from the provider
-          title       = "EC2 CPU Utilization (%)",
+          region      = provider.aws.region,
+          title       = "CPU Utilization - ${instance_id}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
         }
       },
-      # Memory Utilization Widget
+      # Widget 2: Memory Utilization for this instance
       {
         type   = "metric",
-        x      = 8, y = 0, width = 8, height = 6,
+        x      = 8,
+        y      = index * 6, # Same row (y-coordinate)
+        width  = 8,
+        height = 6,
         properties = {
-          metrics     = [["CWAgent", "mem_used_percent", "InstanceId", each.value.instance_id]],
+          metrics     = [["CWAgent", "mem_used_percent", "InstanceId", instance_id]],
           period      = 300,
           stat        = "Average",
-          region      = provider.aws.region, # Inherits region from the provider
-          title       = "Memory Utilization (%)",
+          region      = provider.aws.region,
+          title       = "Memory Utilization - ${instance_id}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
         }
       },
-      # Disk Utilization Widget
+      # Widget 3: Disk Utilization for this instance
       {
         type   = "metric",
-        x      = 16, y = 0, width = 8, height = 6,
+        x      = 16,
+        y      = index * 6, # Same row (y-coordinate)
+        width  = 8,
+        height = 6,
         properties = {
           metrics = [[
             "CWAgent", "disk_used_percent",
-            "InstanceId", each.value.instance_id,
-            "device", each.value.disk_device,
-            "fstype", each.value.file_system_type,
-            "path", each.value.disk_path
+            "InstanceId", instance_id,
+            "device", "nvme0n1p1", # Using default, adjust if needed
+            "fstype", "xfs",
+            "path", "/"
           ]],
           period      = 300,
           stat        = "Average",
-          region      = provider.aws.region, # Inherits region from the provider
-          title       = "Disk Utilization (%) on ${each.value.disk_path}",
+          region      = provider.aws.region,
+          title       = "Disk Utilization - ${instance_id}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
         }
       }
     ]
+  ])
+}
+
+# 3. Create a SINGLE CloudWatch Dashboard resource
+resource "aws_cloudwatch_dashboard" "ec2_consolidated" {
+  dashboard_name = "EC2-Health1"
+
+  dashboard_body = jsonencode({
+    # Assign the dynamically generated list of widgets
+    widgets = local.all_widgets
   })
 }
 
 # 4. (Optional) Outputs
-output "created_dashboard_names" {
-  description = "A map of the names of all created CloudWatch dashboards."
-  value       = { for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_name }
+output "dashboard_name" {
+  description = "The name of the consolidated CloudWatch dashboard."
+  value       = aws_cloudwatch_dashboard.ec2_consolidated.dashboard_name
 }
 
-output "instances_found" {
-  description = "List of EC2 instance IDs found with the specified tag."
+output "instances_found_for_dashboard" {
+  description = "List of EC2 instance IDs included in the dashboard."
   value       = data.aws_instances.monitored_instances.ids
 }
