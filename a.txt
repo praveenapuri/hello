@@ -1,4 +1,99 @@
-# modules/dashboards/main.tf
+# main.tf
 
-# This file can be used for shared resources or data sources if needed in the future.
-# For now, all resources are defined in their respective files (e.g., ec2.tf).
+# 1. Configure the AWS Provider
+provider "aws" {
+  region = "us-east-1"
+}
+
+# 2. Define all dashboard configurations in a locals block
+locals {
+  aws_region = "us-east-1"
+
+  ec2_dashboards = {
+    "prod-web-server-01" = {
+      instance_id      = "i-0abcdef1234567890"
+      disk_device      = "nvme0n1p1"
+      disk_path        = "/"
+      file_system_type = "xfs"
+    }
+    "prod-db-server-01" = {
+      instance_id      = "i-0987654321fedcba0"
+      disk_device      = "xvda1"
+      disk_path        = "/data"
+      file_system_type = "ext4"
+    }
+    "staging-app-server" = {
+      instance_id      = "i-0a1b2c3d4e5f6g7h8"
+      disk_device      = "nvme0n1p1"
+      disk_path        = "/"
+      file_system_type = "xfs"
+    }
+  }
+}
+
+# 3. Create the CloudWatch Dashboard resource using for_each
+resource "aws_cloudwatch_dashboard" "ec2" {
+  # Create a dashboard for each item in the locals.ec2_dashboards map
+  for_each = local.ec2_dashboards
+
+  dashboard_name = "EC2-Health-${each.key}" # 'each.key' is the name, e.g., "prod-web-server-01"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      # CPU Utilization Widget
+      {
+        type   = "metric",
+        x      = 0, y = 0, width = 8, height = 6,
+        properties = {
+          metrics     = [["AWS/EC2", "CPUUtilization", "InstanceId", each.value.instance_id]],
+          period      = 300,
+          stat        = "Average",
+          region      = local.aws_region,
+          title       = "EC2 CPU Utilization (%)",
+          yAxis       = { left = { min = 0, max = 100 } },
+          annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
+        }
+      },
+      # Memory Utilization Widget
+      {
+        type   = "metric",
+        x      = 8, y = 0, width = 8, height = 6,
+        properties = {
+          metrics     = [["CWAgent", "mem_used_percent", "InstanceId", each.value.instance_id]],
+          period      = 300,
+          stat        = "Average",
+          region      = local.aws_region,
+          title       = "Memory Utilization (%)",
+          yAxis       = { left = { min = 0, max = 100 } },
+          annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
+        }
+      },
+      # Disk Utilization Widget
+      {
+        type   = "metric",
+        x      = 16, y = 0, width = 8, height = 6,
+        properties = {
+          metrics = [[
+            "CWAgent", "disk_used_percent",
+            "InstanceId", each.value.instance_id,
+            "device", each.value.disk_device,
+            "fstype", each.value.file_system_type,
+            "path", each.value.disk_path
+          ]],
+          period      = 300,
+          stat        = "Average",
+          region      = local.aws_region,
+          title       = "Disk Utilization (%) on ${each.value.disk_path}",
+          yAxis       = { left = { min = 0, max = 100 } },
+          annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
+        }
+      }
+    ]
+  })
+}
+
+# 4. (Optional) Output the names of the created dashboards
+output "created_dashboard_names" {
+  description = "A map of the names of all created CloudWatch dashboards."
+  value       = { for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_name }
+}
