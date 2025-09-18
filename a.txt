@@ -1,4 +1,7 @@
 # main.tf
+terraform {
+  backend "s3" {}
+}
 
 # 1. Dynamically retrieve details of EC2 instances with a specific tag
 data "aws_instances" "monitored_instances" {
@@ -30,7 +33,7 @@ locals {
           metrics     = [["AWS/EC2", "CPUUtilization", "InstanceId", instance_id]],
           period      = 300,
           stat        = "Average",
-          region      = provider.aws.region,
+         # region      = provider.aws.region,
           title       = "CPU Utilization - ${instance_id}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
@@ -47,7 +50,7 @@ locals {
           metrics     = [["CWAgent", "mem_used_percent", "InstanceId", instance_id]],
           period      = 300,
           stat        = "Average",
-          region      = provider.aws.region,
+         # region      = provider.aws.region,
           title       = "Memory Utilization - ${instance_id}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
@@ -70,7 +73,7 @@ locals {
           ]],
           period      = 300,
           stat        = "Average",
-          region      = provider.aws.region,
+         # region      = provider.aws.region,
           title       = "Disk Utilization - ${instance_id}",
           yAxis       = { left = { min = 0, max = 100 } },
           annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
