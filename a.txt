@@ -18,7 +18,7 @@ data "aws_instances" "monitored_instances" {
 
 # 2. For each instance ID found, get its full details (including tags)
 data "aws_instance" "instance_details" {
-  for_each   = toset(data.aws_instances.monitored_instances.ids)
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
   instance_id = each.key
 }
 
@@ -27,13 +27,13 @@ data "aws_instance" "instance_details" {
 locals {
   # Use flatten to create one big list of widgets from our loops
   all_widgets = flatten([
-    # Loop over each instance object from our new data source
-    for index, instance in data.aws_instance.instance_details : [
+    # CORRECTED LOOP: Loop over a list of instances to get a numeric index
+    for index, instance in values(data.aws_instance.instance_details) : [
       # Widget 1: CPU Utilization Gauge
       {
         type   = "metric",
         x      = 0,
-        y      = index * 4, # Arranging widgets in tighter rows
+        y      = index * 4, # 'index' is now a number (0, 1, 2...)
         width  = 8,
         height = 4, # Gauges are shorter
         properties = {
@@ -55,7 +55,7 @@ locals {
       {
         type   = "metric",
         x      = 8,
-        y      = index * 4, # Same row
+        y      = index * 4, # 'index' is now a number
         width  = 8,
         height = 4,
         properties = {
@@ -77,7 +77,7 @@ locals {
       {
         type   = "metric",
         x      = 16,
-        y      = index * 4, # Same row
+        y      = index * 4, # 'index' is now a number
         width  = 8,
         height = 4,
         properties = {
