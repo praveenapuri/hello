@@ -1,58 +1,86 @@
 # main.tf
-terraform {
-  backend "s3" {}
-}
 
-resource "aws_cloudwatch_dashboard" "ec2_explorer_dashboard" {
-  dashboard_name = "EC2-Explorer-Dashboard"
+resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
+  dashboard_name = "Consolidated-AWS-Health-Dashboard"
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: CPU Utilization Explorer
+      # 1. EC2 Health Window
       {
         type   = "explorer",
         x      = 0,
         y      = 0,
         width  = 24,
-        height = 6,
+        height = 7,
         properties = {
-          title = "CPU Utilization (All Monitored Instances)",
-          # This search expression finds all instances with the specified tag
+          title = "EC2 Instance Health (CPU Utilization)",
           metrics = [
             {
-              "expression" : "SEARCH('{AWS/EC2,InstanceId} MetricName=\"CPUUtilization\" tag:Monitoring=enabled', 'Average', 300)"
+              "expression" : "SEARCH('{AWS/EC2,InstanceId} MetricName=\"CPUUtilization\"', 'Average', 300)"
             }
           ]
         }
       },
-      # Widget 2: Memory Utilization Explorer
+      # 2. Lambda Health Window
       {
         type   = "explorer",
         x      = 0,
-        y      = 6, # Positioned below the CPU widget
+        y      = 7,
         width  = 24,
-        height = 6,
+        height = 7,
         properties = {
-          title = "Memory Utilization (All Monitored Instances)",
+          title = "Lambda Function Health (Errors)",
           metrics = [
             {
-              "expression" : "SEARCH('{CWAgent,InstanceId} MetricName=\"mem_used_percent\" tag:Monitoring=enabled', 'Average', 300)"
+              "expression" : "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Errors\"', 'Sum', 300)"
             }
           ]
         }
       },
-      # Widget 3: Disk Utilization Explorer
+      # 3. EBS Health Window
       {
         type   = "explorer",
         x      = 0,
-        y      = 12, # Positioned below the Memory widget
+        y      = 14,
         width  = 24,
-        height = 6,
+        height = 7,
         properties = {
-          title = "Disk Utilization (All Monitored Instances)",
+          title = "EBS Volume Health (VolumeQueueLength)",
           metrics = [
             {
-              "expression" : "SEARCH('{CWAgent,InstanceId,device,fstype,path} MetricName=\"disk_used_percent\" tag:Monitoring=enabled', 'Average', 300)"
+              "expression" : "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeQueueLength\"', 'Maximum', 300)"
+            }
+          ]
+        }
+      },
+      # 4. EFS Health Window
+      {
+        type   = "explorer",
+        x      = 0,
+        y      = 21,
+        width  = 24,
+        height = 7,
+        properties = {
+          title = "EFS File System Health (PercentIOLimit)",
+          metrics = [
+            {
+              "expression" : "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"PercentIOLimit\"', 'Maximum', 300)"
+            }
+          ]
+        }
+      },
+      # 5. FSx Health Window
+      {
+        type   = "explorer",
+        x      = 0,
+        y      = 28,
+        width  = 24,
+        height = 7,
+        properties = {
+          title = "FSx File System Health (FreeStorageCapacity)",
+          metrics = [
+            {
+              "expression" : "SEARCH('{AWS/FSx,FileSystemId} MetricName=\"FreeStorageCapacity\"', 'Minimum', 300)"
             }
           ]
         }
