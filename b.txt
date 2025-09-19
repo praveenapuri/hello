@@ -1,36 +1,14 @@
-{
-    "metrics": [
-        [ "AWS/EC2", "CPUUtilization", "InstanceId", "i-0036e3766e3ffc3d7", { "region": "us-east-1", "yAxis": "left" } ]
-    ],
-    "max": 100,
-    "min": 0,
-    "period": 300,
-    "region": "us-east-1",
-    "setPeriodToTimeRange": false,
-    "stat": "Average",
-    "title": "CPU - epic-payer-web-blob-dev-us-east-1a",
-    "view": "gauge",
-    "yAxis": {
-        "left": {
-            "min": 0,
-            "max": 100
-        },
-        "right": {
-            "min": 0,
-            "max": 100,
-            "showUnits": true
-        }
-    },
-    "annotations": {
-        "horizontal": [
-            {
-                "color": "#d62728",
-                "label": "Untitled annotation",
-                "value": 80,
-                "fill": "above"
-            }
-        ]
-    },
-    "liveData": true,
-    "stacked": false
-}
+The Recommended Strategy: One Dashboard per Service
+Instead of one giant dashboard with internal "folders," the standard approach is to build multiple, focused dashboards. This method is far more manageable and performs better.
+
+Your dashboard list in CloudWatch would look something like this:
+
+EC2-Health-Dashboard
+
+RDS-Performance-Dashboard
+
+Lambda-Errors-Dashboard
+
+ELB-Request-Count-Dashboard
+
+This approach gives you a clean, at-a-glance view for each service, which is easier to navigate and maintain than a single, overloaded dashboard.
