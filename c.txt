@@ -1,20 +1,23 @@
-# modules/dashboards/outputs.tf
-
-output "dashboard_names" {
-  description = "A map of the names of all created CloudWatch dashboards."
-  value = {
-    for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_name
-    # When you add RDS dashboards, you would merge them in here:
-    # merge(
-    #   { for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_name },
-    #   { for k, v in aws_cloudwatch_dashboard.rds : k => v.dashboard_name }
-    # )
-  }
-}
-
-output "dashboard_arns" {
-  description = "A map of the ARNs of all created CloudWatch dashboards."
-  value = {
-    for k, v in aws_cloudwatch_dashboard.ec2 : k => v.dashboard_arn
-  }
-}
+aws_cloudwatch_dashboard.consolidated: Destroying... [id=EPIC-Health1]
+aws_cloudwatch_dashboard.consolidated_health_dashboard: Creating...
+aws_cloudwatch_dashboard.consolidated: Destruction complete after 0s
+╷
+│ Error: operation error CloudWatch:
+│
+│   with aws_cloudwatch_dashboard.consolidated_health_dashboard,
+│   on main.tf line 21, in resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard":
+│   21: resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
+│
+│ operation error CloudWatch: PutDashboard, https response error StatusCode:
+│ 400, RequestID: f73e8583-d113-46d4-aea0-39ba45c52c0a,
+│ InvalidParameterInput: The dashboard body is invalid, there are 15
+│ validation errors:
+│ [
+│   {
+│     "dataPath": "/widgets/0/properties/metrics/0",
+│     "message": "Should have required property 'metricName'"
+│   },
+│   {
+│     "dataPath": "/widgets/0/properties/metrics/0",
+│     "message": "Should have required property 'resourceType'"
+│   },
