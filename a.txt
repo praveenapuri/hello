@@ -25,37 +25,32 @@ data "aws_instance" "instance_details" {
 
 # 3. Dynamically build a single list of widgets for all instances
 locals {
-  # Use flatten to create one big list of widgets from our loops
   all_widgets = flatten([
-    # CORRECTED LOOP: Loop over a list of instances to get a numeric index
+    # Loop over a list of instances to get a numeric index
     for index, instance in values(data.aws_instance.instance_details) : [
       # Widget 1: CPU Utilization Gauge
       {
         type   = "metric",
         x      = 0,
-        y      = index * 4, # 'index' is now a number (0, 1, 2...)
+        y      = index * 4,
         width  = 8,
-        height = 4, # Gauges are shorter
+        height = 4,
         properties = {
           metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
-          view    = "singleValue", # Use singleValue view for gauges
+          view    = "singleValue",
           title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
           region  = provider.aws.region,
           period  = 300,
           stat    = "Average",
-          yAxis   = {
-            left = {
-              min = 0,
-              max = 100
-            }
-          }
+          min     = 0,   # Corrected: Moved from yAxis
+          max     = 100  # Corrected: Moved from yAxis
         }
       },
       # Widget 2: Memory Utilization Gauge
       {
         type   = "metric",
         x      = 8,
-        y      = index * 4, # 'index' is now a number
+        y      = index * 4,
         width  = 8,
         height = 4,
         properties = {
@@ -65,19 +60,15 @@ locals {
           region  = provider.aws.region,
           period  = 300,
           stat    = "Average",
-          yAxis   = {
-            left = {
-              min = 0,
-              max = 100
-            }
-          }
+          min     = 0,   # Corrected: Moved from yAxis
+          max     = 100  # Corrected: Moved from yAxis
         }
       },
       # Widget 3: Disk Utilization Gauge
       {
         type   = "metric",
         x      = 16,
-        y      = index * 4, # 'index' is now a number
+        y      = index * 4,
         width  = 8,
         height = 4,
         properties = {
@@ -93,12 +84,8 @@ locals {
           region  = provider.aws.region,
           period  = 300,
           stat    = "Average",
-          yAxis   = {
-            left = {
-              min = 0,
-              max = 100
-            }
-          }
+          min     = 0,   # Corrected: Moved from yAxis
+          max     = 100  # Corrected: Moved from yAxis
         }
       }
     ]
@@ -122,6 +109,5 @@ output "dashboard_name" {
 
 output "instances_found_for_dashboard" {
   description = "Map of instance IDs to their Name tags included in the dashboard."
-  value = { for inst in data.aws_instance.instance_details : inst.id =>
-  coalesce(inst.tags.Name, "N/A") }
+  value       = { for inst in data.aws_instance.instance_details : inst.id => coalesce(inst.tags.Name, "N/A") }
 }
