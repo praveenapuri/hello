@@ -14,7 +14,7 @@ resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
         height = 7,
         properties = {
           title = "EC2 Instance Health (CPU Utilization)",
-          # Corrected metrics structure
+          stat  = "Average", # <-- Added required property
           metrics = [
             {
               metricName   = "CPUUtilization",
@@ -33,7 +33,7 @@ resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
         height = 7,
         properties = {
           title = "Lambda Function Health (Errors)",
-          # Corrected metrics structure
+          stat  = "Sum", # <-- Added required property
           metrics = [
             {
               metricName   = "Errors",
@@ -52,7 +52,7 @@ resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
         height = 7,
         properties = {
           title = "EBS Volume Health (VolumeQueueLength)",
-          # Corrected metrics structure
+          stat  = "Maximum", # <-- Added required property
           metrics = [
             {
               metricName   = "VolumeQueueLength",
@@ -71,7 +71,7 @@ resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
         height = 7,
         properties = {
           title = "EFS File System Health (PercentIOLimit)",
-          # Corrected metrics structure
+          stat  = "Maximum", # <-- Added required property
           metrics = [
             {
               metricName   = "PercentIOLimit",
@@ -90,7 +90,7 @@ resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
         height = 7,
         properties = {
           title = "FSx File System Health (FreeStorageCapacity)",
-          # Corrected metrics structure
+          stat  = "Minimum", # <-- Added required property
           metrics = [
             {
               metricName   = "FreeStorageCapacity",
