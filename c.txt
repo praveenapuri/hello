@@ -1,23 +1,21 @@
-aws_cloudwatch_dashboard.consolidated: Destroying... [id=EPIC-Health1]
 aws_cloudwatch_dashboard.consolidated_health_dashboard: Creating...
-aws_cloudwatch_dashboard.consolidated: Destruction complete after 0s
 ╷
 │ Error: operation error CloudWatch:
 │
 │   with aws_cloudwatch_dashboard.consolidated_health_dashboard,
-│   on main.tf line 21, in resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard":
-│   21: resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
+│   on main.tf line 22, in resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard":
+│   22: resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
 │
 │ operation error CloudWatch: PutDashboard, https response error StatusCode:
-│ 400, RequestID: f73e8583-d113-46d4-aea0-39ba45c52c0a,
-│ InvalidParameterInput: The dashboard body is invalid, there are 15
+│ 400, RequestID: 9c127765-8c89-444f-8896-f8b7a01d31d5,
+│ InvalidParameterInput: The dashboard body is invalid, there are 5
 │ validation errors:
 │ [
 │   {
 │     "dataPath": "/widgets/0/properties/metrics/0",
-│     "message": "Should have required property 'metricName'"
+│     "message": "Should have required property 'stat'"
 │   },
 │   {
-│     "dataPath": "/widgets/0/properties/metrics/0",
-│     "message": "Should have required property 'resourceType'"
+│     "dataPath": "/widgets/1/properties/metrics/0",
+│     "message": "Should have required property 'stat'"
 │   },
