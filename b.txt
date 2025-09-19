@@ -1,6 +1,36 @@
- Error: Invalid operand
-│
-│   on main.tf line 74, in locals:
-│   74:         y      = index * 4, # Same row
-│
-│ Unsuitable value for left operand: a number is required.
+{
+    "metrics": [
+        [ "AWS/EC2", "CPUUtilization", "InstanceId", "i-0036e3766e3ffc3d7", { "region": "us-east-1", "yAxis": "left" } ]
+    ],
+    "max": 100,
+    "min": 0,
+    "period": 300,
+    "region": "us-east-1",
+    "setPeriodToTimeRange": false,
+    "stat": "Average",
+    "title": "CPU - epic-payer-web-blob-dev-us-east-1a",
+    "view": "gauge",
+    "yAxis": {
+        "left": {
+            "min": 0,
+            "max": 100
+        },
+        "right": {
+            "min": 0,
+            "max": 100,
+            "showUnits": true
+        }
+    },
+    "annotations": {
+        "horizontal": [
+            {
+                "color": "#d62728",
+                "label": "Untitled annotation",
+                "value": 80,
+                "fill": "above"
+            }
+        ]
+    },
+    "liveData": true,
+    "stacked": false
+}
