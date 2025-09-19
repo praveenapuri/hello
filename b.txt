@@ -1,14 +1,105 @@
-The Recommended Strategy: One Dashboard per Service
-Instead of one giant dashboard with internal "folders," the standard approach is to build multiple, focused dashboards. This method is far more manageable and performs better.
+# main.tf
+terraform {
+  backend "s3" {}
+}
 
-Your dashboard list in CloudWatch would look something like this:
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
 
-EC2-Health-Dashboard
+  filter {
+    name   = "tag:Monitoring"
+    values = ["enabled"]
+  }
+}
 
-RDS-Performance-Dashboard
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
 
-Lambda-Errors-Dashboard
+locals {
+  # Define constants for widget layout
+  widget_width      = 6
+  widget_height     = 5
+  widgets_in_a_row  = 4 # 24 (dashboard width) / 6 (widget width)
 
-ELB-Request-Count-Dashboard
+  # A list of all the individual metric widgets
+  metric_widgets = flatten([
+    for instance in values(data.aws_instance.instance_details) : [
+      # CPU Widget
+      {
+        type = "metric",
+        properties = {
+          view    = "singleValue",
+          title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+          region  = provider.aws.region,
+          min     = 0,
+          max     = 100
+        }
+      },
+      # Memory Widget
+      {
+        type = "metric",
+        properties = {
+          view    = "singleValue",
+          title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
+          metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
+          region  = provider.aws.region,
+          min     = 0,
+          max     = 100
+        }
+      },
+      # Disk Widget
+      {
+        type = "metric",
+        properties = {
+          view    = "singleValue",
+          title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
+          metrics = [["CWAgent", "disk_used_percent", "InstanceId", instance.id, "device", "nvme0n1p1", "fstype", "xfs", "path", "/"]],
+          region  = provider.aws.region,
+          min     = 0,
+          max     = 100
+        }
+      }
+    ]
+  ])
 
-This approach gives you a clean, at-a-glance view for each service, which is easier to navigate and maintain than a single, overloaded dashboard.
+  # Final list of all widgets, including the title and calculated positions
+  all_widgets = concat(
+    # 1. The Title Widget for the Group
+    [
+      {
+        type   = "text",
+        x      = 0,
+        y      = 0,
+        width  = 24,
+        height = 1,
+        properties = {
+          markdown = "## EC2 Instance Health"
+        }
+      }
+    ],
+    # 2. All Metric Widgets with calculated positions
+    [
+      for index, widget in local.metric_widgets : {
+        type   = widget.type,
+        x      = (index % local.widgets_in_a_row) * local.widget_width,
+        y      = floor(index / local.widgets_in_a_row) * local.widget_height + 1, # +1 to place below title
+        width  = local.widget_width,
+        height = local.widget_height,
+        properties = widget.properties
+      }
+    ]
+  )
+}
+
+resource "aws_cloudwatch_dashboard" "ec2_consolidated" {
+  dashboard_name = "EC2-Health-Consolidated"
+  dashboard_body = jsonencode({
+    widgets = local.all_widgets
+  })
+}
