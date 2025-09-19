@@ -3,7 +3,7 @@ terraform {
   backend "s3" {}
 }
 
-# 1. Dynamically retrieve details of EC2 instances with a specific tag
+# 1. Dynamically retrieve the IDs of EC2 instances with a specific tag
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
@@ -16,90 +16,112 @@ data "aws_instances" "monitored_instances" {
   }
 }
 
-# 2. Dynamically build a single list of widgets for all instances
+# 2. For each instance ID found, get its full details (including tags)
+data "aws_instance" "instance_details" {
+  for_each   = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
+
+
+# 3. Dynamically build a single list of widgets for all instances
 locals {
   # Use flatten to create one big list of widgets from our loops
   all_widgets = flatten([
-    # Loop over each instance ID found by the data source
-    for index, instance_id in data.aws_instances.monitored_instances.ids : [
-      # Widget 1: CPU Utilization for this instance
+    # Loop over each instance object from our new data source
+    for index, instance in data.aws_instance.instance_details : [
+      # Widget 1: CPU Utilization Gauge
       {
         type   = "metric",
         x      = 0,
-        y      = index * 6, # Arrange widgets in rows based on instance index
+        y      = index * 4, # Arranging widgets in tighter rows
         width  = 8,
-        height = 6,
+        height = 4, # Gauges are shorter
         properties = {
-          metrics     = [["AWS/EC2", "CPUUtilization", "InstanceId", instance_id]],
-          period      = 300,
-          stat        = "Average",
-         # region      = provider.aws.region,
-          title       = "CPU Utilization - ${instance_id}",
-          yAxis       = { left = { min = 0, max = 100 } },
-          annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
+          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+          view    = "singleValue", # Use singleValue view for gauges
+          title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = provider.aws.region,
+          period  = 300,
+          stat    = "Average",
+          yAxis   = {
+            left = {
+              min = 0,
+              max = 100
+            }
+          }
         }
       },
-      # Widget 2: Memory Utilization for this instance
+      # Widget 2: Memory Utilization Gauge
       {
         type   = "metric",
         x      = 8,
-        y      = index * 6, # Same row (y-coordinate)
+        y      = index * 4, # Same row
         width  = 8,
-        height = 6,
+        height = 4,
         properties = {
-          metrics     = [["CWAgent", "mem_used_percent", "InstanceId", instance_id]],
-          period      = 300,
-          stat        = "Average",
-         # region      = provider.aws.region,
-          title       = "Memory Utilization - ${instance_id}",
-          yAxis       = { left = { min = 0, max = 100 } },
-          annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
+          metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
+          view    = "singleValue",
+          title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = provider.aws.region,
+          period  = 300,
+          stat    = "Average",
+          yAxis   = {
+            left = {
+              min = 0,
+              max = 100
+            }
+          }
         }
       },
-      # Widget 3: Disk Utilization for this instance
+      # Widget 3: Disk Utilization Gauge
       {
         type   = "metric",
         x      = 16,
-        y      = index * 6, # Same row (y-coordinate)
+        y      = index * 4, # Same row
         width  = 8,
-        height = 6,
+        height = 4,
         properties = {
           metrics = [[
             "CWAgent", "disk_used_percent",
-            "InstanceId", instance_id,
-            "device", "nvme0n1p1", # Using default, adjust if needed
+            "InstanceId", instance.id,
+            "device", "nvme0n1p1",
             "fstype", "xfs",
             "path", "/"
           ]],
-          period      = 300,
-          stat        = "Average",
-         # region      = provider.aws.region,
-          title       = "Disk Utilization - ${instance_id}",
-          yAxis       = { left = { min = 0, max = 100 } },
-          annotations = { horizontal = [{ color = "#ff0000", label = "Threshold 80%", value = 80 }] }
+          view    = "singleValue",
+          title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = provider.aws.region,
+          period  = 300,
+          stat    = "Average",
+          yAxis   = {
+            left = {
+              min = 0,
+              max = 100
+            }
+          }
         }
       }
     ]
   ])
 }
 
-# 3. Create a SINGLE CloudWatch Dashboard resource
+# 4. Create a SINGLE CloudWatch Dashboard resource
 resource "aws_cloudwatch_dashboard" "ec2_consolidated" {
   dashboard_name = "EC2-Health1"
 
   dashboard_body = jsonencode({
-    # Assign the dynamically generated list of widgets
     widgets = local.all_widgets
   })
 }
 
-# 4. (Optional) Outputs
+# 5. (Optional) Outputs
 output "dashboard_name" {
   description = "The name of the consolidated CloudWatch dashboard."
   value       = aws_cloudwatch_dashboard.ec2_consolidated.dashboard_name
 }
 
 output "instances_found_for_dashboard" {
-  description = "List of EC2 instance IDs included in the dashboard."
-  value       = data.aws_instances.monitored_instances.ids
+  description = "Map of instance IDs to their Name tags included in the dashboard."
+  value = { for inst in data.aws_instance.instance_details : inst.id =>
+  coalesce(inst.tags.Name, "N/A") }
 }
