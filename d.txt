@@ -1,25 +1,44 @@
-{
-    "metrics": [
-        [ "CWAgent", "mem_used_percent", "InstanceId", "i-0dfe4fb78249b02e4", { "region": "us-east-1", "label": "chronicles-backup-test_%MEM-UTIL" } ],
-        [ ".", "disk_used_percent", ".", ".", { "region": "us-east-1", "label": "chronicles-backup-test_%DISK-UTIL" } ],
-        [ ".", "mem_used_percent", ".", "i-03b815a947dd72035", { "region": "us-east-1", "label": "epic-payer-chronicles-dev_%MEM-UTIL" } ],
-        [ ".", "disk_used_percent", ".", ".", { "region": "us-east-1", "label": "epic-payer-chronicles-dev_%DISK-UTIL" } ],
-        [ ".", "LogicalDisk % Free Space", ".", "i-0d7bffd6f80247faf", { "region": "us-east-1", "label": "epic-payer-chronicles-dev_%DISK-FREE" } ],
-        [ ".", "Memory % Committed Bytes In Use", ".", ".", { "region": "us-east-1", "label": "epic-payer-chronicles-dev_%MEM-UTIL" } ],
-        [ "AWS/EC2", "CPUUtilization", ".", "i-0dfe4fb78249b02e4", { "label": "epic-payer-chronicles-test_%CPU-UTIL", "region": "us-east-1" } ],
-        [ "...", "i-076a3647b4978d6e1", { "region": "us-east-1", "visible": false } ],
-        [ "...", "i-0e7b929f6abecda0a", { "region": "us-east-1", "visible": false } ]
-    ],
-    "view": "gauge",
-    "region": "us-east-1",
-    "yAxis": {
-        "left": {
-            "min": 2,
-            "max": 100
+# main.tf
+
+resource "aws_cloudwatch_dashboard" "multi_metric_gauge" {
+  dashboard_name = "Multi-Metric-Gauge-Dashboard"
+
+  dashboard_body = jsonencode({
+    widgets = [
+      {
+        type   = "metric"
+        x      = 0
+        y      = 0
+        width  = 24
+        height = 8
+        properties = {
+          # This complex metrics array defines all the data sources for the gauge
+          metrics = [
+            ["CWAgent", "mem_used_percent", "InstanceId", "i-0dfe4fb78249b02e4", { region = "us-east-1", label = "chronicles-backup-test_%MEM-UTIL" }],
+            [".", "disk_used_percent", ".", ".", { region = "us-east-1", label = "chronicles-backup-test_%DISK-UTIL" }],
+            [".", "mem_used_percent", ".", "i-03b815a947dd72035", { region = "us-east-1", label = "epic-payer-chronicles-dev_%MEM-UTIL" }],
+            [".", "disk_used_percent", ".", ".", { region = "us-east-1", label = "epic-payer-chronicles-dev_%DISK-UTIL" }],
+            [".", "LogicalDisk % Free Space", ".", "i-0d7bffd6f80247faf", { region = "us-east-1", label = "epic-payer-chronicles-dev_%DISK-FREE" }],
+            [".", "Memory % Committed Bytes In Use", ".", ".", { region = "us-east-1", label = "epic-payer-chronicles-dev_%MEM-UTIL" }],
+            ["AWS/EC2", "CPUUtilization", ".", "i-0dfe4fb78249b02e4", { label = "epic-payer-chronicles-test_%CPU-UTIL", region = "us-east-1" }],
+            ["...", "i-076a3647b4978d6e1", { region = "us-east-1", visible = false }],
+            ["...", "i-0e7b929f6abecda0a", { region = "us--east-1", visible = false }]
+          ],
+          # Widget properties translated from the source JSON
+          view     = "gauge",
+          region   = "us-east-1",
+          liveData = true,
+          period   = 300,
+          title    = "EC2-Health",
+          stat     = "Average",
+          yAxis = {
+            left = {
+              min = 2,
+              max = 100
+            }
+          }
         }
-    },
-    "liveData": true,
-    "period": 300,
-    "title": "EC2-Health",
-    "stat": "Average"
+      }
+    ]
+  })
 }
