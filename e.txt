@@ -1,17 +1,8 @@
-│     "dataPath": "/widgets/0/properties/metrics/346",
-│     "message": "Should be array"
-│   },
-│   {
-│     "dataPath": "/widgets/0/properties/metrics/346",
-│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
-│   },
-│   {
-│     "dataPath": "/widgets/0/properties/metrics/347",
-│     "message": "Should be array"
-│   },
-│   {
-│     "dataPath": "/widgets/0/properties/metrics/347",
-│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
-│   }
-│ ] [smarterr summary template error: template "error_summary" not found]
-│ [smarterr detail template error: template "error_detail" not found]
+ou can't reliably create a single multi-metric gauge widget with a dynamic list of EC2 instances using Terraform. The persistent error you're encountering is due to a strict and specific limitation in the CloudWatch API, not an error in the Terraform code itself.
+
+The gauge widget's API is not designed to handle a large, dynamically generated list of metrics in the way that Terraform constructs it, leading to the validation error.
+
+The Core Problem: A CloudWatch API Limitation
+The error message "Field 'metrics' has to be an array of array of strings..." is the key. While a gauge widget can display a few manually added metrics, its underlying API schema is too simple for the complex, nested list of metrics that Terraform generates when it discovers a large number of instances. The API validation fails because it cannot process this dynamic structure for this specific widget type.
+
+This is a limitation of the CloudWatch service itself, and no amount of restructuring the Terraform code for a single multi-metric gauge will resolve it.
