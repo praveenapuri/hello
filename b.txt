@@ -3,73 +3,54 @@ terraform {
   backend "s3" {}
 }
 
-# Dynamically retrieve details of EC2 instances with a specific tag
+# Dynamically retrieve details of EC2 instances
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
     values = ["running", "pending"]
   }
-
-  # It's best practice to filter by a tag to avoid monitoring all instances
-  filter {
-    name   = "tag:Monitoring"
-    values = ["enabled"]
-  }
 }
 
-# For each instance ID found, get its full details (including tags)
+# For each instance ID found, get its full details
 data "aws_instance" "instance_details" {
   for_each    = toset(data.aws_instances.monitored_instances.ids)
   instance_id = each.key
 }
 
-# Dynamically build a single list of widgets for all instances
 locals {
-  all_widgets = flatten([
-    for index, instance in values(data.aws_instance.instance_details) : [
-      # Widget 1: CPU Utilization Gauge
+  # Define constants for the new layout
+  widget_width     = 8
+  widget_height    = 5
+  widgets_in_a_row = 6 # 48 (total desired width) / 8 (widget width)
+
+  # A list of all the individual metric widgets without position data
+  metric_widgets = flatten([
+    for instance in values(data.aws_instance.instance_details) : [
+      # CPU Widget
       {
-        type   = "metric",
-        x      = 0,
-        y      = index * 4,
-        width  = 6,
-        height = 4,
+        type       = "metric",
         properties = {
           metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
           view    = "gauge",
           title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
           region  = provider.aws.region,
-          period  = 300,
-          stat    = "Average",
-          min     = 0,
-          max     = 100
+          stat    = "Average"
         }
       },
-      # Widget 2: Memory Utilization Gauge
+      # Memory Widget
       {
-        type   = "metric",
-        x      = 6,
-        y      = index * 4,
-        width  = 6,
-        height = 4,
+        type       = "metric",
         properties = {
           metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
           view    = "gauge",
           title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
           region  = provider.aws.region,
-          period  = 300,
-          stat    = "Average",
-          min     = 0,
-          max     = 100
+          stat    = "Average"
         }
       },
-      # Widget 3: Disk Utilization Gauge
+      # Disk Widget
       {
-        type   = "metric",
-        x      = 12,
-        y      = index * 4,
-        width  = 6,
-        height = 4,
+        type       = "metric",
         properties = {
           metrics = [[
             "CWAgent", "disk_used_percent",
@@ -81,14 +62,26 @@ locals {
           view    = "gauge",
           title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
           region  = provider.aws.region,
-          period  = 300,
-          stat    = "Average",
-          min     = 0,
-          max     = 100
+          stat    = "Average"
         }
       }
     ]
   ])
+
+  # Final list of all widgets with their calculated grid positions
+  all_widgets = [
+    for index, widget in local.metric_widgets : {
+      type   = widget.type,
+      x      = (index % local.widgets_in_a_row) * local.widget_width,
+      y      = floor(index / local.widgets_in_a_row) * local.widget_height,
+      width  = local.widget_width,
+      height = local.widget_height,
+      properties = merge(widget.properties, {
+        min = 0,
+        max = 100
+      })
+    }
+  ]
 }
 
 # Create a SINGLE CloudWatch Dashboard resource
@@ -96,17 +89,8 @@ resource "aws_cloudwatch_dashboard" "consolidated" {
   dashboard_name = "EPIC-Health1"
 
   dashboard_body = jsonencode({
+    # Note: CloudWatch dashboards do not have a fixed height.
+    # The height of the dashboard will grow to accommodate all widgets.
     widgets = local.all_widgets
   })
-}
-
-# (Optional) Outputs
-output "dashboard_name" {
-  description = "The name of the consolidated CloudWatch dashboard."
-  value       = aws_cloudwatch_dashboard.consolidated.dashboard_name
-}
-
-output "instances_found_for_dashboard" {
-  description = "Map of instance IDs to their Name tags included in the dashboard."
-  value       = { for inst in data.aws_instance.instance_details : inst.id => coalesce(inst.tags.Name, "N/A") }
 }
