@@ -23,12 +23,10 @@ data "aws_instance" "instance_details" {
 locals {
   dynamic_metrics = flatten([
     for instance in values(data.aws_instance.instance_details) : [
-      # For each instance, create a set of three fully-defined metrics
-      ["AWS/EC2", "CPUUtilization", "InstanceId", instance.id, { region = provider.aws.region, label = "${coalesce(instance.tags.Name, instance.id)}_%CPU-UTIL" }],
-      ["CWAgent", "mem_used_percent", "InstanceId", instance.id, { region = provider.aws.region, label = "${coalesce(instance.tags.Name, instance.id)}_%MEM-UTIL" }],
-      
-      # Corrected: The disk metric is now fully defined, removing the "." shorthand
-      ["CWAgent", "disk_used_percent", "InstanceId", instance.id, { region = provider.aws.region, label = "${coalesce(instance.tags.Name, instance.id)}_%DISK-UTIL" }]
+      # Corrected: Each metric is now a pure array of strings, without the final object.
+      ["AWS/EC2", "CPUUtilization", "InstanceId", instance.id],
+      ["CWAgent", "mem_used_percent", "InstanceId", instance.id],
+      ["CWAgent", "disk_used_percent", "InstanceId", instance.id]
     ]
   ])
 }
