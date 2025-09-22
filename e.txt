@@ -1,12 +1,16 @@
-│     "dataPath": "/widgets/0/properties/metrics/433",
-│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
-│   },
-│   {
-│     "dataPath": "/widgets/0/properties/metrics/434",
+│     "dataPath": "/widgets/0/properties/metrics/346",
 │     "message": "Should be array"
 │   },
 │   {
-│     "dataPath": "/widgets/0/properties/metrics/434",
+│     "dataPath": "/widgets/0/properties/metrics/346",
+│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
+│   },
+│   {
+│     "dataPath": "/widgets/0/properties/metrics/347",
+│     "message": "Should be array"
+│   },
+│   {
+│     "dataPath": "/widgets/0/properties/metrics/347",
 │     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
 │   }
 │ ] [smarterr summary template error: template "error_summary" not found]
