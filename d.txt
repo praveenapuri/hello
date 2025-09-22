@@ -1,4 +1,7 @@
 # main.tf
+terraform {
+  backend "s3" {}
+}
 
 # 1. Find all EC2 instances with a specific tag
 data "aws_instances" "monitored_instances" {
@@ -19,48 +22,79 @@ data "aws_instance" "instance_details" {
   instance_id = each.key
 }
 
-# 3. Dynamically build the complex metrics array for the gauge widget
+# 3. Dynamically build a list of individual widgets
 locals {
-  dynamic_metrics = flatten([
-    for instance in values(data.aws_instance.instance_details) : [
-      # Corrected: Each metric is now a pure array of strings, without the final object.
-      ["AWS/EC2", "CPUUtilization", "InstanceId", instance.id],
-      ["CWAgent", "mem_used_percent", "InstanceId", instance.id],
-      ["CWAgent", "disk_used_percent", "InstanceId", instance.id]
+  # Define the layout of the grid
+  widget_width      = 8
+  widget_height     = 6
+  widgets_per_instance = 3 # We are creating 3 widgets per instance (CPU, Mem, Disk)
+  instances_per_row = 1     # Each instance's widgets will get their own row
+
+  all_widgets = flatten([
+    for inst_index, instance in values(data.aws_instance.instance_details) : [
+      # Widget 1: CPU Utilization Gauge for this instance
+      {
+        type   = "metric",
+        x      = 0, # First widget in the row
+        y      = inst_index * local.widget_height,
+        width  = local.widget_width,
+        height = local.widget_height,
+        properties = {
+          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+          view    = "gauge",
+          title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = provider.aws.region,
+          stat    = "Average",
+          yAxis   = { left = { min = 0, max = 100 } }
+        }
+      },
+      # Widget 2: Memory Utilization Gauge for this instance
+      {
+        type   = "metric",
+        x      = local.widget_width, # Second widget in the row
+        y      = inst_index * local.widget_height,
+        width  = local.widget_width,
+        height = local.widget_height,
+        properties = {
+          metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
+          view    = "gauge",
+          title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = provider.aws.region,
+          stat    = "Average",
+          yAxis   = { left = { min = 0, max = 100 } }
+        }
+      },
+      # Widget 3: Disk Utilization Gauge for this instance
+      {
+        type   = "metric",
+        x      = local.widget_width * 2, # Third widget in the row
+        y      = inst_index * local.widget_height,
+        width  = local.widget_width,
+        height = local.widget_height,
+        properties = {
+          metrics = [[
+            "CWAgent", "disk_used_percent",
+            "InstanceId", instance.id,
+            "device", "nvme0n1p1",
+            "fstype", "xfs",
+            "path", "/"
+          ]],
+          view    = "gauge",
+          title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = provider.aws.region,
+          stat    = "Average",
+          yAxis   = { left = { min = 0, max = 100 } }
+        }
+      }
     ]
   ])
 }
 
-
-# 4. Create the CloudWatch Dashboard with the dynamically generated widget
-resource "aws_cloudwatch_dashboard" "multi_metric_gauge" {
-  dashboard_name = "Dynamic-Multi-Metric-Gauge"
+# 4. Create the CloudWatch Dashboard
+resource "aws_cloudwatch_dashboard" "consolidated" {
+  dashboard_name = "EC2-Instance-Health"
 
   dashboard_body = jsonencode({
-    widgets = [
-      {
-        type   = "metric"
-        x      = 0
-        y      = 0
-        width  = 24
-        height = 8
-        properties = {
-          # Use the dynamically generated list of metrics
-          metrics  = local.dynamic_metrics,
-          view     = "gauge",
-          region   = "us-east-1",
-          liveData = true,
-          period   = 300,
-          title    = "EC2-Health (All Monitored Instances)",
-          stat     = "Average",
-          yAxis = {
-            left = {
-              min = 0,
-              max = 100
-            }
-          }
-        }
-      }
-    ]
+    widgets = local.all_widgets
   })
 }
