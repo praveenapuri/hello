@@ -1,105 +1,105 @@
 # main.tf
+terraform {
+  backend "s3" {}
+}
 
-resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
-  dashboard_name = "Consolidated-AWS-Health-Dashboard"
+# Dynamically retrieve details of EC2 instances
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
+}
 
-  dashboard_body = jsonencode({
-    widgets = [
-      # 1. EC2 Health Window
+# For each instance ID found, get its full details
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
+
+locals {
+  # Define constants for the new layout
+  widget_width     = 8
+  widget_height    = 5
+  widgets_in_a_row = 6 # 48 (total desired width) / 8 (widget width)
+
+  # A list of all the individual metric widgets without position data
+  metric_widgets = flatten([
+    for instance in values(data.aws_instance.instance_details) : [
+      # CPU Widget
       {
-        type   = "explorer",
-        x      = 0,
-        y      = 0,
-        width  = 24,
-        height = 7,
+        type       = "metric",
         properties = {
-          title = "EC2 Instance Health (CPU Utilization)",
-          stat  = "Average", # <-- Added required property
-          metrics = [
-            {
-              metricName   = "CPUUtilization",
-              resourceType = "CLOUDWATCH_METRIC",
-              search       = "SEARCH('{AWS/EC2,InstanceId} MetricName=\"CPUUtilization\"', 'Average', 300)"
-            }
-          ]
+          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+          view    = "gauge",
+          title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = var.region,
+          [cite_start]stat    = "Average" [cite: 4]
         }
       },
-      # 2. Lambda Health Window
+      # Memory Widget
       {
-        type   = "explorer",
-        x      = 0,
-        y      = 7,
-        width  = 24,
-        height = 7,
+        type       = "metric",
         properties = {
-          title = "Lambda Function Health (Errors)",
-          stat  = "Sum", # <-- Added required property
-          metrics = [
-            {
-              metricName   = "Errors",
-              resourceType = "CLOUDWATCH_METRIC",
-              search       = "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Errors\"', 'Sum', 300)"
-            }
-          ]
+          [cite_start]metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]][cite: 10],
+          view    = "gauge",
+          title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = var.region,
+          stat    = "Average"
         }
       },
-      # 3. EBS Health Window
+      # Disk Widget
       {
-        type   = "explorer",
-        x      = 0,
-        y      = 14,
-        width  = 24,
-        height = 7,
+        type       = "metric",
         properties = {
-          title = "EBS Volume Health (VolumeQueueLength)",
-          stat  = "Maximum", # <-- Added required property
-          metrics = [
-            {
-              metricName   = "VolumeQueueLength",
-              resourceType = "CLOUDWATCH_METRIC",
-              search       = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeQueueLength\"', 'Maximum', 300)"
-            }
-          ]
-        }
-      },
-      # 4. EFS Health Window
-      {
-        type   = "explorer",
-        x      = 0,
-        y      = 21,
-        width  = 24,
-        height = 7,
-        properties = {
-          title = "EFS File System Health (PercentIOLimit)",
-          stat  = "Maximum", # <-- Added required property
-          metrics = [
-            {
-              metricName   = "PercentIOLimit",
-              resourceType = "CLOUDWATCH_METRIC",
-              search       = "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"PercentIOLimit\"', 'Maximum', 300)"
-            }
-          ]
-        }
-      },
-      # 5. FSx Health Window
-      {
-        type   = "explorer",
-        x      = 0,
-        y      = 28,
-        width  = 24,
-        height = 7,
-        properties = {
-          title = "FSx File System Health (FreeStorageCapacity)",
-          stat  = "Minimum", # <-- Added required property
-          metrics = [
-            {
-              metricName   = "FreeStorageCapacity",
-              resourceType = "CLOUDWATCH_METRIC",
-              search       = "SEARCH('{AWS/FSx,FileSystemId} MetricName=\"FreeStorageCapacity\"', 'Minimum', 300)"
-            }
-          ]
+          metrics = [[
+            "CWAgent", "disk_used_percent",
+            "InstanceId", instance.id,
+            [cite_start]"device", "nvme0n1p1"[cite: 17],
+            "fstype", "xfs",
+            "path", "/"
+          ]],
+          view    = "gauge",
+          title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
+          region  = var.region,
+          [cite_start]stat    = "Average" [cite: 18]
         }
       }
     ]
+  ])
+
+  # Final list of all widgets with their calculated grid positions
+  all_widgets = [
+    for index, widget in local.metric_widgets : {
+      type   = widget.type,
+      x      = (index % local.widgets_in_a_row) * local.widget_width,
+      y      = floor(index / local.widgets_in_a_row) * local.widget_height,
+      width  = local.widget_width,
+      height = local.widget_height,
+      properties = merge(widget.properties, {
+        min = 0,
+        max = 100
+      })
+    }
+  ]
+}
+
+# Create a SINGLE CloudWatch Dashboard resource
+resource "aws_cloudwatch_dashboard" "consolidated" {
+  dashboard_name = "EPIC-Health1"
+
+  dashboard_body = jsonencode({
+    widgets = local.all_widgets
   })
+}
+
+# (Optional) Outputs
+output "dashboard_name" {
+  [cite_start]description = "The name of the consolidated CloudWatch dashboard." [cite: 24]
+  [cite_start]value       = aws_cloudwatch_dashboard.consolidated.dashboard_name [cite: 24]
+}
+
+output "instances_found_for_dashboard" {
+  [cite_start]description = "Map of instance IDs to their Name tags included in the dashboard." [cite: 25]
+  [cite_start]value       = { for inst in data.aws_instance.instance_details : inst.id => coalesce(inst.tags.Name, "N/A") } [cite: 25]
 }
