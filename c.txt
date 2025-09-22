@@ -1,21 +1,9 @@
-aws_cloudwatch_dashboard.consolidated_health_dashboard: Creating...
-╷
-│ Error: operation error CloudWatch:
+ Error: Missing key/value separator
 │
-│   with aws_cloudwatch_dashboard.consolidated_health_dashboard,
-│   on main.tf line 22, in resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard":
-│   22: resource "aws_cloudwatch_dashboard" "consolidated_health_dashboard" {
-│
-│ operation error CloudWatch: PutDashboard, https response error StatusCode:
-│ 400, RequestID: 9c127765-8c89-444f-8896-f8b7a01d31d5,
-│ InvalidParameterInput: The dashboard body is invalid, there are 5
-│ validation errors:
-│ [
-│   {
-│     "dataPath": "/widgets/0/properties/metrics/0",
-│     "message": "Should have required property 'stat'"
-│   },
-│   {
-│     "dataPath": "/widgets/1/properties/metrics/0",
-│     "message": "Should have required property 'stat'"
-│   },
+│   on main.tf line 37, in locals:
+│   32:         properties = {
+│   33:           metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+│   34:           view    = "gauge",
+│   35:           title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+│   36:           region  = var.region,
+│   37:           [cite_start]stat    = "Average" [cite: 4]
