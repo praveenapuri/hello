@@ -21,14 +21,25 @@ locals {
   # --- Layout Configuration ---
   widget_width  = 8
   widget_height = 6
-  
+
   # --- Reusable Widget Properties ---
   common_gauge_properties = {
     view    = "gauge",
     region  = provider.aws.region,
     period  = 300,
     stat    = "Average",
-    yAxis   = { left = { min = 0, max = 100 } }
+    yAxis   = { left = { min = 0, max = 100 } },
+    # Added the 80% threshold annotation here
+    annotations = {
+      horizontal = [
+        {
+          color = "#ff0000",
+          label = "Threshold 80%",
+          value = 80,
+          fill  = "above"
+        }
+      ]
+    }
   }
 
   # --- Widget Generation ---
