@@ -28,8 +28,8 @@ locals {
         type   = "metric",
         x      = 0,
         y      = index * 4, # 'index' is now a number (0, 1, 2...)
-        width  = 6,
-        height = 4,
+        width  = 8,
+        height = 6,
         properties = {
           metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
           view    = "gauge",
@@ -71,10 +71,10 @@ locals {
       # Widget 2: Memory Utilization Gauge
       {
         type   = "metric",
-        x      = 6,
+        x      = 8,
         y      = index * 4, # 'index' is now a number (0, 1, 2...)
-        width  = 6,
-        height = 4,
+        width  = 8,
+        height = 6,
         properties = {
           metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
           view    = "gauge",
@@ -115,10 +115,10 @@ locals {
       # Widget 3: Disk Utilization Gauge
       {
         type   = "metric",
-        x      = 12,
+        x      = 16,
         y      = index * 4, # 'index' is now a number (0, 1, 2...)
-        width  = 6,
-        height = 4,
+        width  = 8,
+        height = 6,
         properties = {
           metrics = [[
             "CWAgent", "disk_used_percent",
@@ -168,7 +168,7 @@ locals {
 
 # Create a SINGLE CloudWatch Dashboard resource
 resource "aws_cloudwatch_dashboard" "consolidated" {
-  dashboard_name = "EPIC-Health1"
+  dashboard_name = "EC2-Health"
 
   dashboard_body = jsonencode({
     widgets = local.all_widgets
