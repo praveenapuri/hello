@@ -3,7 +3,7 @@ terraform {
   backend "s3" {}
 }
 
-# Find all EC2 instances with a specific tag
+# --- Data Sources to find EC2 Instances ---
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
@@ -16,99 +16,85 @@ data "aws_instances" "monitored_instances" {
   }
 }
 
-# Get the full details for each monitored instance
 data "aws_instance" "instance_details" {
   for_each    = toset(data.aws_instances.monitored_instances.ids)
   instance_id = each.key
 }
 
+# --- Widget Generation Logic ---
 locals {
-  # --- Layout Configuration ---
-  widget_width      = 8
-  widget_height     = 6
-  widgets_in_a_row  = 3 # 24 (dashboard width) / 8 (widget width)
-
-  # A list of all individual metric widgets
-  metric_widgets = flatten([
+  # --- EC2 WIDGETS ---
+  ec2_metric_widgets = flatten([
     for instance in values(data.aws_instance.instance_details) : [
       # CPU Widget
-      {
-        type       = "metric",
-        properties = {
-          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
-          view    = "gauge",
-          title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
-          region  = provider.aws.region,
-          stat    = "Average"
-        }
-      },
+      { type = "metric", properties = { metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]], view = "gauge", title = "CPU - ${coalesce(instance.tags.Name, instance.id)}", region = provider.aws.region, stat = "Average" } },
       # Memory Widget
-      {
-        type       = "metric",
-        properties = {
-          metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
-          view    = "gauge",
-          title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
-          region  = provider.aws.region,
-          stat    = "Average"
-        }
-      },
+      { type = "metric", properties = { metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]], view = "gauge", title = "Memory - ${coalesce(instance.tags.Name, instance.id)}", region = provider.aws.region, stat = "Average" } },
       # Disk Widget
-      {
-        type       = "metric",
-        properties = {
-          metrics = [[
-            "CWAgent", "disk_used_percent",
-            "InstanceId", instance.id,
-            "device", "nvme0n1p1",
-            "fstype", "xfs",
-            "path", "/"
-          ]],
-          view    = "gauge",
-          title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
-          region  = provider.aws.region,
-          stat    = "Average"
-        }
-      }
+      { type = "metric", properties = { metrics = [["CWAgent", "disk_used_percent", "InstanceId", instance.id, "device", "nvme0n1p1", "fstype", "xfs", "path", "/"]], view = "gauge", title = "Disk - ${coalesce(instance.tags.Name, instance.id)}", region = provider.aws.region, stat = "Average" } }
     ]
   ])
 
-  # Final list of all widgets, including the title and calculated positions
-  all_widgets = concat(
-    # 1. The Title Widget for the Group
+  positioned_ec2_widgets = concat(
+    # Title Widget for the EC2 Group
+    [{
+      type   = "text", x = 0, y = 0, width = 24, height = 1,
+      properties = { markdown = "## EC2 Instance Health" }
+    }],
+    # All EC2 Metric Widgets with calculated positions
     [
-      {
-        type   = "text",
-        x      = 0,
-        y      = 0,
-        width  = 24,
-        height = 1,
-        properties = {
-          markdown = "## EC2 Instance Health"
-        }
-      }
-    ],
-    # 2. All Metric Widgets with calculated grid positions
-    [
-      for index, widget in local.metric_widgets : {
+      for index, widget in local.ec2_metric_widgets : {
         type   = widget.type,
-        x      = (index % local.widgets_in_a_row) * local.widget_width,
-        y      = floor(index / local.widgets_in_a_row) * local.widget_height + 1, # +1 to place below title
-        width  = local.widget_width,
-        height = local.widget_height,
-        properties = merge(widget.properties, {
-          yAxis = { left = { min = 0, max = 100 } }
-        })
+        x      = (index % 3) * 8,
+        y      = floor(index / 3) * 6 + 1, # +1 to place below title
+        width  = 8,
+        height = 6,
+        properties = merge(widget.properties, { yAxis = { left = { min = 0, max = 100 } } })
       }
     ]
   )
+
+  # --- LAMBDA WIDGETS ---
+  lambda_widgets = [
+    # Title Widget for the Lambda Group
+    {
+      type   = "text", x = 0, y = 50, # Start this section lower on the dashboard
+      width  = 24, height = 1,
+      properties = { markdown = "## Lambda Function Health" }
+    },
+    # Invocations Widget
+    {
+      type   = "metric", x = 0, y = 51, width = 12, height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Invocations", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Invocations (All Functions)",
+        region  = provider.aws.region,
+        stat    = "Sum",
+        period  = 300
+      }
+    },
+    # Errors Widget
+    {
+      type   = "metric", x = 12, y = 51, width = 12, height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Errors", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Errors (All Functions)",
+        region  = provider.aws.region,
+        stat    = "Sum",
+        period  = 300
+      }
+    }
+  ]
 }
 
-# Create the CloudWatch Dashboard
-resource "aws_cloudwatch_dashboard" "ec2_consolidated" {
-  dashboard_name = "EC2-Consolidated-Health"
+# --- Dashboard Resource ---
+resource "aws_cloudwatch_dashboard" "consolidated_dashboard" {
+  dashboard_name = "Consolidated-EC2-Lambda-Health"
 
   dashboard_body = jsonencode({
-    widgets = local.all_widgets
+    # Combine the lists of EC2 and Lambda widgets
+    widgets = concat(local.positioned_ec2_widgets, local.lambda_widgets)
   })
 }
