@@ -1,104 +1,148 @@
 # main.tf
-terraform {
-  backend "s3" {}
-}
 
-# Find all running or pending EC2 instances
+# --- Data Sources to find EC2 Instances ---
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
     values = ["running", "pending"]
   }
+  filter {
+    name   = "tag:Monitoring"
+    values = ["enabled"]
+  }
 }
 
-# Get the full details for each monitored instance
 data "aws_instance" "instance_details" {
   for_each    = toset(data.aws_instances.monitored_instances.ids)
   instance_id = each.key
 }
 
+# --- Widget Generation Logic ---
 locals {
-  # --- Layout Configuration ---
-  widget_width  = 8
-  widget_height = 6
-
-  # --- Reusable Widget Properties ---
-  common_gauge_properties = {
-    view    = "gauge",
-    region  = provider.aws.region,
-    period  = 300,
-    stat    = "Average",
-    yAxis   = { left = { min = 0, max = 100 } },
-    # Added the 80% threshold annotation here
-    annotations = {
-      horizontal = [
+  # --- EC2 Widgets ---
+  ec2_widgets = flatten([
+    # A title widget for the EC2 section
+    [{
+      type   = "text",
+      x      = 0,
+      y      = 0,
+      width  = 24,
+      height = 1,
+      properties = {
+        markdown = "## EC2 Instance Health"
+      }
+    }],
+    # Dynamically generate a row of gauges for each EC2 instance
+    flatten([
+      for index, instance in values(data.aws_instance.instance_details) : [
+        # CPU Gauge
         {
-          color = "#ff0000",
-          label = "Threshold 80%",
-          value = 80,
-          fill  = "above"
+          type   = "metric",
+          x      = 0,
+          y      = 1 + (index * 6), # Position below the title
+          width  = 8,
+          height = 6,
+          properties = {
+            metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+            view    = "gauge",
+            title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+            region  = provider.aws.region,
+            stat    = "Average",
+            yAxis   = { left = { min = 0, max = 100 } }
+          }
+        },
+        # Memory Gauge
+        {
+          type   = "metric",
+          x      = 8,
+          y      = 1 + (index * 6),
+          width  = 8,
+          height = 6,
+          properties = {
+            metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
+            view    = "gauge",
+            title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
+            region  = provider.aws.region,
+            stat    = "Average",
+            yAxis   = { left = { min = 0, max = 100 } }
+          }
+        },
+        # Disk Gauge
+        {
+          type   = "metric",
+          x      = 16,
+          y      = 1 + (index * 6),
+          width  = 8,
+          height = 6,
+          properties = {
+            metrics = [[
+              "CWAgent", "disk_used_percent",
+              "InstanceId", instance.id, "device", "nvme0n1p1", "fstype", "xfs", "path", "/"
+            ]],
+            view    = "gauge",
+            title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
+            region  = provider.aws.region,
+            stat    = "Average",
+            yAxis   = { left = { min = 0, max = 100 } }
+          }
         }
       ]
-    }
-  }
-
-  # --- Widget Generation ---
-  ec2_widgets = flatten([
-    for index, instance in values(data.aws_instance.instance_details) : [
-      # CPU Gauge
-      {
-        type   = "metric",
-        x      = 0,
-        y      = index * local.widget_height,
-        width  = local.widget_width,
-        height = local.widget_height,
-        properties = merge(
-          local.common_gauge_properties,
-          {
-            title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
-            metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]]
-          }
-        )
-      },
-      # Memory Gauge
-      {
-        type   = "metric",
-        x      = local.widget_width,
-        y      = index * local.widget_height,
-        width  = local.widget_width,
-        height = local.widget_height,
-        properties = merge(
-          local.common_gauge_properties,
-          {
-            title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
-            metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]]
-          }
-        )
-      },
-      # Disk Gauge
-      {
-        type   = "metric",
-        x      = local.widget_width * 2,
-        y      = index * local.widget_height,
-        width  = local.widget_width,
-        height = local.widget_height,
-        properties = merge(
-          local.common_gauge_properties,
-          {
-            title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
-            metrics = [["CWAgent", "disk_used_percent", "InstanceId", instance.id, "device", "nvme0n1p1", "fstype", "xfs", "path", "/"]]
-          }
-        )
-      }
-    ]
+    ])
   ])
+
+  # --- Lambda Widgets ---
+  lambda_widgets = [
+    # A title widget for the Lambda section
+    {
+      type   = "text",
+      x      = 0,
+      y      = 100, # Position this section far below the EC2 section
+      width  = 24,
+      height = 1,
+      properties = {
+        markdown = "## Lambda Function Health"
+      }
+    },
+    # Invocations
+    {
+      type   = "metric",
+      x      = 0,
+      y      = 101,
+      width  = 12,
+      height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Invocations", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Invocations (All Functions)",
+        region  = provider.aws.region,
+        stat    = "Sum"
+      }
+    },
+    # Errors
+    {
+      type   = "metric",
+      x      = 12,
+      y      = 101,
+      width  = 12,
+      height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Errors", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Errors (All Functions)",
+        region  = provider.aws.region,
+        stat    = "Sum"
+      }
+    }
+    # Add more Lambda widgets here (e.g., Throttles, Duration)
+  ]
 }
 
-# Create the CloudWatch Dashboard
-resource "aws_cloudwatch_dashboard" "ec2" {
-  dashboard_name = "EC2-Health-Compact"
+# --- Dashboard Resource ---
+resource "aws_cloudwatch_dashboard" "consolidated_dashboard" {
+  dashboard_name = "Consolidated-EC2-Lambda-Health"
 
   dashboard_body = jsonencode({
-    widgets = local.ec2_widgets
+    # Combine the lists of EC2 and Lambda widgets
+    widgets = concat(local.ec2_widgets, local.lambda_widgets)
   })
 }
