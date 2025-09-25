@@ -3,11 +3,30 @@ terraform {
   backend "s3" {}
 }
 
+# --- Data Sources to find EC2 Instances ---
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
+
+  filter {
+    name   = "tag:Monitoring"
+    values = ["enabled"]
+  }
+}
+
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
+
+# --- Widget Generation Logic ---
 locals {
   # --- EC2 WIDGETS ---
-  ec2_widgets = [
+  ec2_widgets = concat(
     # Title Widget for the EC2 Group
-    {
+    [{
       type   = "text",
       x      = 0,
       y      = 0,
@@ -16,53 +35,64 @@ locals {
       properties = {
         markdown = "## EC2 Instance Health"
       }
-    },
-    # CPU Explorer
-    {
-      type   = "explorer",
-      x      = 0,
-      y      = 1,
-      width  = 8,
-      height = 7,
-      properties = {
-        title        = "CPU Utilization",
-        search       = "SEARCH('{AWS/EC2,InstanceId} MetricName=\"CPUUtilization\" tag:Monitoring=enabled', 'Average', 300)",
-        stat         = "Average",
-        resourceType = "CLOUDWATCH_METRIC",
-        metricName   = "CPUUtilization"
-      }
-    },
-    # Memory Explorer
-    {
-      type   = "explorer",
-      x      = 8,
-      y      = 1,
-      width  = 8,
-      height = 7,
-      properties = {
-        title        = "Memory Utilization",
-        search       = "SEARCH('{CWAgent,InstanceId} MetricName=\"mem_used_percent\" tag:Monitoring=enabled', 'Average', 300)",
-        stat         = "Average",
-        resourceType = "CLOUDWATCH_METRIC",
-        metricName   = "mem_used_percent"
-      }
-    },
-    # Disk Explorer
-    {
-      type   = "explorer",
-      x      = 16,
-      y      = 1,
-      width  = 8,
-      height = 7,
-      properties = {
-        title        = "Disk Utilization",
-        search       = "SEARCH('{CWAgent,InstanceId,device,fstype,path} MetricName=\"disk_used_percent\" tag:Monitoring=enabled', 'Average', 300)",
-        stat         = "Average",
-        resourceType = "CLOUDWATCH_METRIC",
-        metricName   = "disk_used_percent"
-      }
-    }
-  ]
+    }],
+    # Dynamically generate a row of gauges for each EC2 instance
+    flatten([
+      for index, instance in values(data.aws_instance.instance_details) : [
+        # CPU Gauge
+        {
+          type   = "metric",
+          x      = 0,
+          y      = 1 + (index * 6), # +1 to position below the title
+          width  = 8,
+          height = 6,
+          properties = {
+            metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
+            view    = "gauge",
+            title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
+            region  = provider.aws.region,
+            stat    = "Average",
+            yAxis   = { left = { min = 0, max = 100 } }
+          }
+        },
+        # Memory Gauge
+        {
+          type   = "metric",
+          x      = 8,
+          y      = 1 + (index * 6),
+          width  = 8,
+          height = 6,
+          properties = {
+            metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
+            view    = "gauge",
+            title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
+            region  = provider.aws.region,
+            stat    = "Average",
+            yAxis   = { left = { min = 0, max = 100 } }
+          }
+        },
+        # Disk Gauge
+        {
+          type   = "metric",
+          x      = 16,
+          y      = 1 + (index * 6),
+          width  = 8,
+          height = 6,
+          properties = {
+            metrics = [[
+              "CWAgent", "disk_used_percent",
+              "InstanceId", instance.id, "device", "nvme0n1p1", "fstype", "xfs", "path", "/"
+            ]],
+            view    = "gauge",
+            title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
+            region  = provider.aws.region,
+            stat    = "Average",
+            yAxis   = { left = { min = 0, max = 100 } }
+          }
+        }
+      ]
+    ])
+  )
 
   # --- LAMBDA WIDGETS ---
   lambda_widgets = [
@@ -70,61 +100,47 @@ locals {
     {
       type   = "text",
       x      = 0,
-      y      = 8, # Position this section below the EC2 widgets
+      y      = 100, # Start this section lower down to leave space for EC2
       width  = 24,
       height = 1,
       properties = {
         markdown = "## Lambda Function Health"
       }
     },
-    # Errors Explorer
+    # Invocations Widget
     {
-      type   = "explorer",
+      type   = "metric",
       x      = 0,
-      y      = 9,
-      width  = 8,
-      height = 7,
+      y      = 101,
+      width  = 12,
+      height = 6,
       properties = {
-        title        = "Errors",
-        search       = "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Errors\"', 'Sum', 300)",
-        stat         = "Sum",
-        resourceType = "CLOUDWATCH_METRIC",
-        metricName   = "Errors"
+        metrics = [["AWS/Lambda", "Invocations", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Invocations (All Functions)",
+        region  = provider.aws.region,
+        stat    = "Sum"
       }
     },
-    # Throttles Explorer
+    # Errors Widget
     {
-      type   = "explorer",
-      x      = 8,
-      y      = 9,
-      width  = 8,
-      height = 7,
+      type   = "metric",
+      x      = 12,
+      y      = 101,
+      width  = 12,
+      height = 6,
       properties = {
-        title        = "Throttles",
-        search       = "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Throttles\"', 'Sum', 300)",
-        stat         = "Sum",
-        resourceType = "CLOUDWATCH_METRIC",
-        metricName   = "Throttles"
-      }
-    },
-    # Duration (P95) Explorer
-    {
-      type   = "explorer",
-      x      = 16,
-      y      = 9,
-      width  = 8,
-      height = 7,
-      properties = {
-        title        = "Duration (p95)",
-        search       = "SEARCH('{AWS/Lambda,FunctionName} MetricName=\"Duration\"', 'p95', 300)",
-        stat         = "p95",
-        resourceType = "CLOUDWATCH_METRIC",
-        metricName   = "Duration"
+        metrics = [["AWS/Lambda", "Errors", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Errors (All Functions)",
+        region  = provider.aws.region,
+        stat    = "Sum"
       }
     }
   ]
 }
 
+# --- Dashboard Resource ---
 resource "aws_cloudwatch_dashboard" "consolidated_dashboard" {
   dashboard_name = "Consolidated-EC2-Lambda-Health"
 
