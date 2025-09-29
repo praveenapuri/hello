@@ -1,66 +1,26 @@
-# main.tf
+region = "us-east-1"
 
-# 1. Find all EC2 instances with a specific tag
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
+lambda_function_names = [
+  "my-lambda-1",
+  "my-lambda-2"
+]
 
-  filter {
-    name   = "tag:Monitoring"
-    values = ["enabled"]
-  }
-}
+efs_file_system_ids = [
+  "fs-0123456789abcdef0"
+]
 
-# 2. For each instance found, get its full details (including Name tag)
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
+fsx_file_system_ids = [
+  "fs-0a1b2c3d4e5f6g7h"
+]
 
-# 3. Dynamically build the complex metrics array for the gauge widget
-locals {
-  dynamic_metrics = flatten([
-    for instance in values(data.aws_instance.instance_details) : [
-      # Corrected: Each metric is now a pure array of strings, without the final object.
-      ["AWS/EC2", "CPUUtilization", "InstanceId", instance.id],
-      ["CWAgent", "mem_used_percent", "InstanceId", instance.id],
-      ["CWAgent", "disk_used_percent", "InstanceId", instance.id]
-    ]
-  ])
-}
+nlb_names = [
+  "my-nlb-name"
+]
 
+alb_names = [
+  "app/my-alb/abcd1234efgh5678"  # ALB LoadBalancer dimension name as shown in CloudWatch
+]
 
-# 4. Create the CloudWatch Dashboard with the dynamically generated widget
-resource "aws_cloudwatch_dashboard" "multi_metric_gauge" {
-  dashboard_name = "Dynamic-Multi-Metric-Gauge"
-
-  dashboard_body = jsonencode({
-    widgets = [
-      {
-        type   = "metric"
-        x      = 0
-        y      = 0
-        width  = 24
-        height = 8
-        properties = {
-          # Use the dynamically generated list of metrics
-          metrics  = local.dynamic_metrics,
-          view     = "gauge",
-          region   = "us-east-1",
-          liveData = true,
-          period   = 300,
-          title    = "EC2-Health (All Monitored Instances)",
-          stat     = "Average",
-          yAxis = {
-            left = {
-              min = 0,
-              max = 100
-            }
-          }
-        }
-      }
-    ]
-  })
-}
+alb_targetgroup_arns = [
+  "targetgroup/my-alb-tg/abcd1234efgh5678"
+]
