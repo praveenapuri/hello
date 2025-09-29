@@ -1,3 +1,5 @@
+# main.tf
+
 terraform {
   backend "s3" {}
 }
@@ -18,61 +20,39 @@ data "aws_instance" "instance_details" {
 }
 
 # -----------------------
-# Lambda functions discovery
-# -----------------------
-data "aws_lambda_functions" "all" {}
+# Lambda functions resource (you must have/manage them in Terraform)
+# Example:
+variable "lambda_function_names" {
+  type        = list(string)
+  description = "Names for Lambda functions to manage"
+}
+
+resource "aws_lambda_function" "my_lambdas" {
+  for_each      = toset(var.lambda_function_names)
+  function_name = each.value
+  # other required settings (handler, runtime, role, etc.)
+  # ...
+}
 
 locals {
-  # extract Lambda function names dynamically
-  lambda_function_names = [
-    for f in data.aws_lambda_functions.all.functions : f.function_name
-  ]
+  # extract function names from the managed Lambda resource
+  lambda_function_names = [for fn in aws_lambda_function.my_lambdas : fn.function_name]
 
-  # --- Layout Configuration ---
-  widget_width  = 8
-  widget_height = 6
-
-  # --- Reusable Widget Properties ---
-  common_gauge_properties = {
-    view   = "gauge"
-    region = var.region
-    period = 300
-    stat   = "Average"
-    yAxis = {
-      left = {
-        min = 0
-        max = 100
-      }
-    }
-    annotations = {
-      horizontal = [
-        {
-          color = "#ff0000"
-          label = "Threshold 80%"
-          value = 80
-          fill  = "above"
-        }
-      ]
-    }
-  }
-
-  nos_ec2 = length(data.aws_instance.instance_details)
-
-  # --- EC2 Metrics Generation ---
+  # EC2 metrics...
   cpu_metrics = [
-    for instance in slice(values(data.aws_instance.instance_details),0,local.nos_ec2) : [
+    for instance in values(data.aws_instance.instance_details) : [
       "AWS/EC2", "CPUUtilization", "InstanceId", instance.id,
       { "label" : "CPU - ${coalesce(instance.tags.Name, instance.id)}" }
     ]
   ]
   mem_metrics = [
-    for instance in slice(values(data.aws_instance.instance_details),0,local.nos_ec2) : [
+    for instance in values(data.aws_instance.instance_details) : [
       "CWAgent", "mem_used_percent", "InstanceId", instance.id,
       { "label" : "%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}" }
     ]
   ]
   disk_metrics = [
-    for instance in slice(values(data.aws_instance.instance_details),0,local.nos_ec2) : [
+    for instance in values(data.aws_instance.instance_details) : [
       "CWAgent", "disk_used_percent", "InstanceId", instance.id,
       { "label": "%Disk - ${coalesce(instance.tags.Name, instance.id)}" }
     ]
@@ -81,30 +61,35 @@ locals {
   all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
   metrics_string = jsonencode(local.all_metrics)
 
-  # --- Lambda Metrics Generation ---
+  # Lambda metrics generation
   lambda_invocations = [
     for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Invocations", "FunctionName", fn, { "label": "Invocations - ${fn}" }
+      "AWS/Lambda", "Invocations", "FunctionName", fn,
+      { "label": "Invocations - ${fn}" }
     ]
   ]
   lambda_errors = [
     for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Errors", "FunctionName", fn, { "label": "Errors - ${fn}" }
+      "AWS/Lambda", "Errors", "FunctionName", fn,
+      { "label": "Errors - ${fn}" }
     ]
   ]
   lambda_duration = [
     for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Duration", "FunctionName", fn, { "label": "Duration - ${fn}" }
+      "AWS/Lambda", "Duration", "FunctionName", fn,
+      { "label": "Duration - ${fn}" }
     ]
   ]
   lambda_throttles = [
     for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Throttles", "FunctionName", fn, { "label": "Throttles - ${fn}" }
+      "AWS/Lambda", "Throttles", "FunctionName", fn,
+      { "label": "Throttles - ${fn}" }
     ]
   ]
   lambda_concurrent = [
     for fn in local.lambda_function_names : [
-      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn, { "label": "Concurrent - ${fn}" }
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn,
+      { "label": "Concurrent - ${fn}" }
     ]
   ]
 
@@ -117,7 +102,7 @@ locals {
   )
   lambda_metrics_string = jsonencode(local.all_lambda_metrics)
 
-  # --- Dashboard JSON ---
+  # Dashboard JSON
   final = <<-EOF
 {
   "widgets" : [
@@ -161,27 +146,9 @@ locals {
   ]
 }
 EOF
-
-  parsed_json = try(jsondecode(local.final), null)
-  is_valid_json = local.parsed_json != null
 }
 
-output "raw_json_string" {
-  value = replace(local.final, "\n", " ")
-}
-
-output "is_valid_json" {
-  value = local.is_valid_json
-}
-
-output "metrics_string" {
-  value = local.metrics_string
-}
-
-# -----------------------
-# CloudWatch Dashboard
-# -----------------------
 resource "aws_cloudwatch_dashboard" "health" {
   dashboard_name = "EC2-Lambda-Health-dev"
-  dashboard_body =  local.final
+  dashboard_body = local.final
 }
