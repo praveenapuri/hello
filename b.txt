@@ -1,7 +1,15 @@
-# main.tf
-
 terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
+  }
   backend "s3" {}
+}
+
+provider "aws" {
+  region = var.region
 }
 
 # -----------------------
@@ -20,25 +28,26 @@ data "aws_instance" "instance_details" {
 }
 
 # -----------------------
-# Lambda functions resource (you must have/manage them in Terraform)
-# Example:
+# Variables
+# -----------------------
+variable "region" {
+  description = "AWS Region"
+  type        = string
+}
+
 variable "lambda_function_names" {
+  description = "List of Lambda function names to include in dashboard"
   type        = list(string)
-  description = "Names for Lambda functions to manage"
 }
 
-resource "aws_lambda_function" "my_lambdas" {
-  for_each      = toset(var.lambda_function_names)
-  function_name = each.value
-  # other required settings (handler, runtime, role, etc.)
-  # ...
-}
-
+# -----------------------
+# Locals
+# -----------------------
 locals {
-  # extract function names from the managed Lambda resource
-  lambda_function_names = [for fn in aws_lambda_function.my_lambdas : fn.function_name]
+  # extract Lambda names from var
+  lambda_function_names = var.lambda_function_names
 
-  # EC2 metrics...
+  # --- EC2 Metrics Generation ---
   cpu_metrics = [
     for instance in values(data.aws_instance.instance_details) : [
       "AWS/EC2", "CPUUtilization", "InstanceId", instance.id,
@@ -61,7 +70,7 @@ locals {
   all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
   metrics_string = jsonencode(local.all_metrics)
 
-  # Lambda metrics generation
+  # --- Lambda Metrics Generation ---
   lambda_invocations = [
     for fn in local.lambda_function_names : [
       "AWS/Lambda", "Invocations", "FunctionName", fn,
@@ -102,7 +111,7 @@ locals {
   )
   lambda_metrics_string = jsonencode(local.all_lambda_metrics)
 
-  # Dashboard JSON
+  # --- Dashboard JSON ---
   final = <<-EOF
 {
   "widgets" : [
@@ -148,6 +157,16 @@ locals {
 EOF
 }
 
+# -----------------------
+# Outputs
+# -----------------------
+output "raw_json_string" {
+  value = replace(local.final, "\n", " ")
+}
+
+# -----------------------
+# CloudWatch Dashboard
+# -----------------------
 resource "aws_cloudwatch_dashboard" "health" {
   dashboard_name = "EC2-Lambda-Health-dev"
   dashboard_body = local.final
