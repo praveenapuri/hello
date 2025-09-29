@@ -1,118 +1,86 @@
-# main.tf
-terraform {
-  backend "s3" {}
-}
-
-# Find all running or pending EC2 instances
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
-}
-
-# Get the full details for each monitored instance
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
-
+# --- Lambda Metrics ---
 locals {
-  # --- EC2 Multi-Metric Gauge Widget (Existing Logic) ---
-  ec2_metrics = flatten([
-    for instance in values(data.aws_instance.instance_details) : [
-      ["AWS/EC2", "CPUUtilization", "InstanceId", instance.id, { "label" : "CPU - ${coalesce(instance.tags.Name, instance.id)}" }],
-      ["CWAgent", "mem_used_percent", "InstanceId", instance.id, { "label" : "%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}" }],
-      ["CWAgent", "disk_used_percent", "InstanceId", instance.id, { "label" : "%Disk - ${coalesce(instance.tags.Name, instance.id)}" }]
+  lambda_functions = var.lambda_function_names # pass a list of Lambda names via TF var
+
+  lambda_metrics = [
+    for fn in local.lambda_functions : [
+      "AWS/Lambda", "Invocations", "FunctionName", fn, 
+      { "label": "Invocations - ${fn}" }
     ]
-  ])
-
-  ec2_widgets = [
-    {
-      type   = "metric",
-      x      = 0,
-      y      = 0,
-      width  = 24,
-      height = 8,
-      properties = {
-        metrics  = local.ec2_metrics,
-        view     = "gauge",
-        title    = "EC2-Health",
-        region   = provider.aws.region,
-        period   = 300,
-        stat     = "Average",
-        yAxis    = { left = { min = 0, max = 100 } }
-      }
-    }
+  ]
+  lambda_error_metrics = [
+    for fn in local.lambda_functions : [
+      "AWS/Lambda", "Errors", "FunctionName", fn,
+      { "label": "Errors - ${fn}" }
+    ]
+  ]
+  lambda_duration_metrics = [
+    for fn in local.lambda_functions : [
+      "AWS/Lambda", "Duration", "FunctionName", fn,
+      { "label": "Duration - ${fn}" }
+    ]
   ]
 
-  # --- NEW: Lambda Health Widgets ---
-  lambda_widgets = [
-    # Title Widget for the Lambda Group
+  all_lambda_metrics = concat(local.lambda_metrics, local.lambda_error_metrics, local.lambda_duration_metrics)
+  lambda_metrics_string = jsonencode(local.all_lambda_metrics)
+
+  final = <<-EOF
+{
+  "widgets" : [
     {
-      type   = "text",
-      x      = 0,
-      y      = 10, # Position this section below the EC2 widget
-      width  = 24,
-      height = 1,
-      properties = {
-        markdown = "## Lambda Function Health"
+      "type"   : "metric",
+      "x": 0,
+      "y": 0,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.metrics_string},
+        "view": "gauge",
+        "region" :  "${var.region}",
+        "yAxis" : {
+          "left" : {
+            "min" : 2,
+            "max" : 100
+          }
+        },
+        "liveData": true,
+        "period": 300,
+        "title": "EC2-Health"
       }
     },
-    # Invocations Widget
     {
-      type   = "metric",
-      x      = 0,
-      y      = 11,
-      width  = 8,
-      height = 6,
-      properties = {
-        metrics = [["AWS/Lambda", "Invocations", { "stat": "Sum" }]],
-        view    = "timeSeries",
-        title   = "Total Invocations",
-        region  = provider.aws.region,
-        stat    = "Sum"
-      }
-    },
-    # Errors Widget
-    {
-      type   = "metric",
-      x      = 8,
-      y      = 11,
-      width  = 8,
-      height = 6,
-      properties = {
-        metrics = [["AWS/Lambda", "Errors", { "stat": "Sum" }]],
-        view    = "timeSeries",
-        title   = "Total Errors",
-        region  = provider.aws.region,
-        stat    = "Sum"
-      }
-    },
-    # Throttles Widget
-    {
-      type   = "metric",
-      x      = 16,
-      y      = 11,
-      width  = 8,
-      height = 6,
-      properties = {
-        metrics = [["AWS/Lambda", "Throttles", { "stat": "Sum" }]],
-        view    = "timeSeries",
-        title   = "Total Throttles",
-        region  = provider.aws.region,
-        stat    = "Sum"
+      "type"   : "metric",
+      "x": 0,
+      "y": 7,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.lambda_metrics_string},
+        "view": "timeSeries",
+        "region" :  "${var.region}",
+        "period": 300,
+        "title": "Lambda-Health"
       }
     }
   ]
 }
+EOF
+}
 
-# Create the CloudWatch Dashboard
-resource "aws_cloudwatch_dashboard" "ec2" {
+
+
+resource "aws_cloudwatch_dashboard" "health" {
   dashboard_name = "EC2-Lambda-Health-dev"
-  
-  dashboard_body = jsonencode({
-    # Combine the existing EC2 widgets with the new Lambda widgets
-    widgets = concat(local.ec2_widgets, local.lambda_widgets)
-  })
+  dashboard_body = local.final
 }
+
+
+variable "lambda_function_names" {
+  description = "List of Lambda function names to monitor"
+  type = list(string)
+}
+
+
+lambda_function_names = ["my-lambda-1","my-lambda-2"]
