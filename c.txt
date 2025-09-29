@@ -156,4 +156,147 @@ locals {
   ebs_burst_balance = [
     for v in local.ebs_volumes : [ "AWS/EBS", "BurstBalance", "VolumeId", v.id, { "label": "BurstBal - ${v.id}" } ]
   ]
-  ebs_all_metrics = concat(local
+  ebs_all_metrics = concat(local.ebs_read_ops, local.ebs_write_ops, local.ebs_queue_length, local.ebs_burst_balance)
+  ebs_metrics_json = jsonencode(local.ebs_all_metrics)
+
+  # -------------------
+  # SSM Run Command metrics
+  ssm_metrics = [
+    [ "AWS/SSM-RunCommand", "CommandsSucceeded", { "label": "SSM Commands Succeeded" } ],
+    [ "AWS/SSM-RunCommand", "CommandsFailed", { "label": "SSM Commands Failed" } ],
+    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { "label": "SSM Commands DeliveryTimedOut" } ]
+  ]
+  ssm_metrics_json = jsonencode(local.ssm_metrics)
+
+  # -------------------
+  # FSx metrics
+  fsx_read_bytes = [
+    for id in var.fsx_file_system_ids : [ "AWS/FSx", "DataReadBytes", "FileSystemId", id, { "label": "FSxRead - ${id}" } ]
+  ]
+  fsx_write_bytes = [
+    for id in var.fsx_file_system_ids : [ "AWS/FSx", "DataWriteBytes", "FileSystemId", id, { "label": "FSxWrite - ${id}" } ]
+  ]
+  fsx_cpu = [
+    for id in var.fsx_file_system_ids : [ "AWS/FSx", "CPUUtilization", "FileSystemId", id, { "label": "FSxCPU - ${id}" } ]
+  ]
+  fsx_all_metrics = concat(local.fsx_read_bytes, local.fsx_write_bytes, local.fsx_cpu)
+  fsx_metrics_json = jsonencode(local.fsx_all_metrics)
+
+  # -------------------
+  # EFS metrics
+  efs_burst = [
+    for id in var.efs_file_system_ids : [ "AWS/EFS", "BurstCreditBalance", "FileSystemId", id, { "label": "EFS-Burst - ${id}" } ]
+  ]
+  efs_percent_io = [
+    for id in var.efs_file_system_ids : [ "AWS/EFS", "PercentIOLimit", "FileSystemId", id, { "label": "EFS-PercentIO - ${id}" } ]
+  ]
+  efs_client_conn = [
+    for id in var.efs_file_system_ids : [ "AWS/EFS", "ClientConnections", "FileSystemId", id, { "label": "EFS-Clients - ${id}" } ]
+  ]
+  efs_storage = [
+    for id in var.efs_file_system_ids : [ "AWS/EFS", "StorageBytes", "FileSystemId", id, { "label": "EFS-Storage - ${id}" } ]
+  ]
+  efs_all_metrics = concat(local.efs_burst, local.efs_percent_io, local.efs_client_conn, local.efs_storage)
+  efs_metrics_json = jsonencode(local.efs_all_metrics)
+
+  # -------------------
+  # NLB metrics
+  nlb_healthy = [
+    for n in var.nlb_names : [ "AWS/NetworkELB", "HealthyHostCount", "LoadBalancer", n, { "label": "NLB-Healthy - ${n}" } ]
+  ]
+  nlb_unhealthy = [
+    for n in var.nlb_names : [ "AWS/NetworkELB", "UnHealthyHostCount", "LoadBalancer", n, { "label": "NLB-Unhealthy - ${n}" } ]
+  ]
+  nlb_active_flow = [
+    for n in var.nlb_names : [ "AWS/NetworkELB", "ActiveFlowCount", "LoadBalancer", n, { "label": "NLB-ActiveFlow - ${n}" } ]
+  ]
+  nlb_all_metrics = concat(local.nlb_healthy, local.nlb_unhealthy, local.nlb_active_flow)
+  nlb_metrics_json = jsonencode(local.nlb_all_metrics)
+
+  # -------------------
+  # ALB metrics
+  alb_healthy = [
+    for n in var.alb_names : [ "AWS/ApplicationELB", "HealthyHostCount", "LoadBalancer", n, { "label": "ALB-Healthy - ${n}" } ]
+  ]
+  alb_unhealthy = [
+    for n in var.alb_names : [ "AWS/ApplicationELB", "UnHealthyHostCount", "LoadBalancer", n, { "label": "ALB-Unhealthy - ${n}" } ]
+  ]
+  alb_new_conn = [
+    for n in var.alb_names : [ "AWS/ApplicationELB", "NewConnectionCount", "LoadBalancer", n, { "label": "ALB-NewConn - ${n}" } ]
+  ]
+  alb_all_metrics = concat(local.alb_healthy, local.alb_unhealthy, local.alb_new_conn)
+  alb_metrics_json = jsonencode(local.alb_all_metrics)
+
+  # -------------------
+  # ALB TargetGroup metrics
+  alb_tg_healthy = [
+    for t in var.alb_targetgroup_arns : [ "AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", t, { "label": "TG-Healthy - ${t}" } ]
+  ]
+  alb_tg_unhealthy = [
+    for t in var.alb_targetgroup_arns : [ "AWS/ApplicationELB", "UnHealthyHostCount", "TargetGroup", t, { "label": "TG-UnHealthy - ${t}" } ]
+  ]
+  alb_tg_all_metrics = concat(local.alb_tg_healthy, local.alb_tg_unhealthy)
+  alb_tg_metrics_json = jsonencode(local.alb_tg_all_metrics)
+
+  # -------------------
+  # Dashboard JSON
+  dashboard_body = <<-EOF
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0, "y": 0, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.ec2_metrics_json}, "view": "gauge", "region": "${var.region}", "period": 300, "title": "EC2-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 7, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.lambda_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "Lambda-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 14, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.ebs_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "EBS-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 21, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.ssm_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "SSM RunCommand Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 28, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.fsx_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "FSx-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 35, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.efs_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "EFS-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 42, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.nlb_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "NLB-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 49, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.alb_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "ALB-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 56, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.alb_tg_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "ALB TargetGroup Health" }
+    }
+  ]
+}
+EOF
+}
+
+# -----------------------
+# Dashboard resource
+# -----------------------
+resource "aws_cloudwatch_dashboard" "infra_health" {
+  dashboard_name = "Infra-Health-Overview"
+  dashboard_body = local.dashboard_body
+}
