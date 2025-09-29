@@ -1,9 +1,7 @@
- Error: Missing key/value separator
+ Error: Unsupported attribute
 │
-│   on main.tf line 37, in locals:
-│   32:         properties = {
-│   33:           metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
-│   34:           view    = "gauge",
-│   35:           title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
-│   36:           region  = var.region,
-│   37:           [cite_start]stat    = "Average" [cite: 4]
+│   on main.tf line 28, in locals:
+│   28:     for f in data.aws_lambda_functions.all.functions : f.function_name
+│
+│ This object has no argument, nested block, or exported attribute named
+│ "functions".
