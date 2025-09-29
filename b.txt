@@ -1,10 +1,58 @@
-# --- LAMBDA WIDGETS ---
+# main.tf
+terraform {
+  backend "s3" {}
+}
+
+# Find all running or pending EC2 instances
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
+}
+
+# Get the full details for each monitored instance
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
+
+locals {
+  # --- EC2 Multi-Metric Gauge Widget (Existing Logic) ---
+  ec2_metrics = flatten([
+    for instance in values(data.aws_instance.instance_details) : [
+      ["AWS/EC2", "CPUUtilization", "InstanceId", instance.id, { "label" : "CPU - ${coalesce(instance.tags.Name, instance.id)}" }],
+      ["CWAgent", "mem_used_percent", "InstanceId", instance.id, { "label" : "%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}" }],
+      ["CWAgent", "disk_used_percent", "InstanceId", instance.id, { "label" : "%Disk - ${coalesce(instance.tags.Name, instance.id)}" }]
+    ]
+  ])
+
+  ec2_widgets = [
+    {
+      type   = "metric",
+      x      = 0,
+      y      = 0,
+      width  = 24,
+      height = 8,
+      properties = {
+        metrics  = local.ec2_metrics,
+        view     = "gauge",
+        title    = "EC2-Health",
+        region   = provider.aws.region,
+        period   = 300,
+        stat     = "Average",
+        yAxis    = { left = { min = 0, max = 100 } }
+      }
+    }
+  ]
+
+  # --- NEW: Lambda Health Widgets ---
   lambda_widgets = [
     # Title Widget for the Lambda Group
     {
       type   = "text",
       x      = 0,
-      y      = 100, # Start this section lower down to leave space for EC2
+      y      = 10, # Position this section below the EC2 widget
       width  = 24,
       height = 1,
       properties = {
@@ -15,7 +63,7 @@
     {
       type   = "metric",
       x      = 0,
-      y      = 101,
+      y      = 11,
       width  = 8,
       height = 6,
       properties = {
@@ -30,7 +78,7 @@
     {
       type   = "metric",
       x      = 8,
-      y      = 101,
+      y      = 11,
       width  = 8,
       height = 6,
       properties = {
@@ -45,7 +93,7 @@
     {
       type   = "metric",
       x      = 16,
-      y      = 101,
+      y      = 11,
       width  = 8,
       height = 6,
       properties = {
@@ -59,12 +107,12 @@
   ]
 }
 
-# --- Dashboard Resource ---
-resource "aws_cloudwatch_dashboard" "consolidated_dashboard" {
-  dashboard_name = "Consolidated-EC2-Lambda-Health"
-
+# Create the CloudWatch Dashboard
+resource "aws_cloudwatch_dashboard" "ec2" {
+  dashboard_name = "EC2-Lambda-Health-dev"
+  
   dashboard_body = jsonencode({
-    # Combine the lists of EC2 and Lambda widgets
+    # Combine the existing EC2 widgets with the new Lambda widgets
     widgets = concat(local.ec2_widgets, local.lambda_widgets)
   })
 }
