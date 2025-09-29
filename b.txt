@@ -1,182 +1,70 @@
-# main.tf
-terraform {
-  backend "s3" {}
-}
-
-# --- Variables ---
-variable "sns_topic_arn" {
-  description = "The ARN of the SNS topic to send alarm notifications to."
-  type        = string
-  # Replace with your actual SNS topic ARN
-  default     = "arn:aws:sns:us-east-1:123456789012:MyAlarmsTopic"
-}
-
-# --- Data Sources to find EC2 Instances ---
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
-  filter {
-    name   = "tag:Monitoring"
-    values = ["enabled"]
-  }
-}
-
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
-
-# --- CloudWatch Alarms ---
-resource "aws_cloudwatch_metric_alarm" "cpu_high" {
-  for_each              = data.aws_instance.instance_details
-  alarm_name            = "CPU_Utilization_High-${coalesce(each.value.tags.Name, each.key)}"
-  comparison_operator   = "GreaterThanOrEqualToThreshold"
-  evaluation_periods    = "2"
-  metric_name           = "CPUUtilization"
-  namespace             = "AWS/EC2"
-  period                = "300"
-  statistic             = "Average"
-  threshold             = "80"
-  alarm_description     = "This alarm fires when CPU utilization is >= 80% for 10 minutes."
-  alarm_actions         = [var.sns_topic_arn]
-  ok_actions            = [var.sns_topic_arn]
-  dimensions = {
-    InstanceId = each.key
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "mem_high" {
-  for_each              = data.aws_instance.instance_details
-  alarm_name            = "Memory_Utilization_High-${coalesce(each.value.tags.Name, each.key)}"
-  comparison_operator   = "GreaterThanOrEqualToThreshold"
-  evaluation_periods    = "2"
-  metric_name           = "mem_used_percent"
-  namespace             = "CWAgent"
-  period                = "300"
-  statistic             = "Average"
-  threshold             = "80"
-  alarm_description     = "This alarm fires when Memory utilization is >= 80% for 10 minutes."
-  alarm_actions         = [var.sns_topic_arn]
-  ok_actions            = [var.sns_topic_arn]
-  dimensions = {
-    InstanceId = each.key
-  }
-}
-
-resource "aws_cloudwatch_metric_alarm" "disk_high" {
-  for_each              = data.aws_instance.instance_details
-  alarm_name            = "Disk_Utilization_High-${coalesce(each.value.tags.Name, each.key)}"
-  comparison_operator   = "GreaterThanOrEqualToThreshold"
-  evaluation_periods    = "2"
-  metric_name           = "disk_used_percent"
-  namespace             = "CWAgent"
-  period                = "300"
-  statistic             = "Average"
-  threshold             = "80"
-  alarm_description     = "This alarm fires when Disk utilization is >= 80% for 10 minutes."
-  alarm_actions         = [var.sns_topic_arn]
-  ok_actions            = [var.sns_topic_arn]
-  dimensions = {
-    InstanceId = each.key,
-    path       = "/",
-    device     = "nvme0n1p1", # Adjust if your device name differs
-    fstype     = "xfs"        # Adjust if your filesystem type differs
-  }
-}
-
-# --- CloudWatch Dashboard ---
-locals {
-  # Create a list of all alarm ARNs to display on the dashboard
-  all_alarm_arns = tolist(concat(
-    [for alarm in aws_cloudwatch_metric_alarm.cpu_high : alarm.arn],
-    [for alarm in aws_cloudwatch_metric_alarm.mem_high : alarm.arn],
-    [for alarm in aws_cloudwatch_metric_alarm.disk_high : alarm.arn]
-  ))
-
-  # Create a list of individual gauge widgets for each instance
-  all_gauge_widgets = flatten([
-    for index, instance in values(data.aws_instance.instance_details) : [
-      # CPU Widget
-      {
-        type   = "metric",
-        x      = 0,
-        y      = 10 + (index * 6), # Position below the alarm widget
-        width  = 8,
-        height = 6,
-        properties = {
-          metrics = [["AWS/EC2", "CPUUtilization", "InstanceId", instance.id]],
-          view    = "gauge",
-          title   = "CPU - ${coalesce(instance.tags.Name, instance.id)}",
-          region  = provider.aws.region,
-          stat    = "Average",
-          yAxis   = { left = { min = 0, max = 100 } }
-        }
-      },
-      # Memory Widget
-      {
-        type   = "metric",
-        x      = 8,
-        y      = 10 + (index * 6),
-        width  = 8,
-        height = 6,
-        properties = {
-          metrics = [["CWAgent", "mem_used_percent", "InstanceId", instance.id]],
-          view    = "gauge",
-          title   = "Memory - ${coalesce(instance.tags.Name, instance.id)}",
-          region  = provider.aws.region,
-          stat    = "Average",
-          yAxis   = { left = { min = 0, max = 100 } }
-        }
-      },
-      # Disk Widget
-      {
-        type   = "metric",
-        x      = 16,
-        y      = 10 + (index * 6),
-        width  = 8,
-        height = 6,
-        properties = {
-          metrics = [[
-            "CWAgent", "disk_used_percent",
-            "InstanceId", instance.id,
-            "device", "nvme0n1p1",
-            "fstype", "xfs",
-            "path", "/"
-          ]],
-          view    = "gauge",
-          title   = "Disk - ${coalesce(instance.tags.Name, instance.id)}",
-          region  = provider.aws.region,
-          stat    = "Average",
-          yAxis   = { left = { min = 0, max = 100 } }
-        }
+# --- LAMBDA WIDGETS ---
+  lambda_widgets = [
+    # Title Widget for the Lambda Group
+    {
+      type   = "text",
+      x      = 0,
+      y      = 100, # Start this section lower down to leave space for EC2
+      width  = 24,
+      height = 1,
+      properties = {
+        markdown = "## Lambda Function Health"
       }
-    ]
-  ])
+    },
+    # Invocations Widget
+    {
+      type   = "metric",
+      x      = 0,
+      y      = 101,
+      width  = 8,
+      height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Invocations", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Invocations",
+        region  = provider.aws.region,
+        stat    = "Sum"
+      }
+    },
+    # Errors Widget
+    {
+      type   = "metric",
+      x      = 8,
+      y      = 101,
+      width  = 8,
+      height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Errors", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Errors",
+        region  = provider.aws.region,
+        stat    = "Sum"
+      }
+    },
+    # Throttles Widget
+    {
+      type   = "metric",
+      x      = 16,
+      y      = 101,
+      width  = 8,
+      height = 6,
+      properties = {
+        metrics = [["AWS/Lambda", "Throttles", { "stat": "Sum" }]],
+        view    = "timeSeries",
+        title   = "Total Throttles",
+        region  = provider.aws.region,
+        stat    = "Sum"
+      }
+    }
+  ]
 }
 
-resource "aws_cloudwatch_dashboard" "alarm_dashboard" {
-  dashboard_name = "EC2-Health-and-Alarms"
+# --- Dashboard Resource ---
+resource "aws_cloudwatch_dashboard" "consolidated_dashboard" {
+  dashboard_name = "Consolidated-EC2-Lambda-Health"
 
   dashboard_body = jsonencode({
-    widgets = concat(
-      [
-        # The Alarm Status Widget
-        {
-          type   = "alarm",
-          x      = 0,
-          y      = 0,
-          width  = 24,
-          height = 10,
-          properties = {
-            title  = "Instances with High Utilization (>80%)",
-            alarms = local.all_alarm_arns
-          }
-        }
-      ],
-      # All the individual gauge widgets
-      local.all_gauge_widgets
-    )
+    # Combine the lists of EC2 and Lambda widgets
+    widgets = concat(local.ec2_widgets, local.lambda_widgets)
   })
 }
