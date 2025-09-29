@@ -1,26 +1,18 @@
-region = "us-east-1"
-
-lambda_function_names = [
-  "my-lambda-1",
-  "my-lambda-2"
-]
-
-efs_file_system_ids = [
-  "fs-0123456789abcdef0"
-]
-
-fsx_file_system_ids = [
-  "fs-0a1b2c3d4e5f6g7h"
-]
-
-nlb_names = [
-  "my-nlb-name"
-]
-
-alb_names = [
-  "app/my-alb/abcd1234efgh5678"  # ALB LoadBalancer dimension name as shown in CloudWatch
-]
-
-alb_targetgroup_arns = [
-  "targetgroup/my-alb-tg/abcd1234efgh5678"
-]
+ Error: operation error CloudWatch:
+│
+│   with aws_cloudwatch_dashboard.infra_health,
+│   on main.tf line 144, in resource "aws_cloudwatch_dashboard" "infra_health":
+│  144: resource "aws_cloudwatch_dashboard" "infra_health" {
+│
+│ operation error CloudWatch: PutDashboard, https response error StatusCode:
+│ 400, RequestID: 852dac8e-b954-45a6-9da8-b27614ba49a6,
+│ InvalidParameterInput: The dashboard body is invalid, there are 1
+│ validation errors:
+│ [
+│   {
+│     "dataPath": "/widgets/0/properties",
+│     "message": "Should have required property 'yAxis'"
+│   }
+│ ] [smarterr summary template error: template "error_summary" not found]
+│ [smarterr detail template error: template "error_detail" not found]
+╵
