@@ -1,115 +1,159 @@
-resource "aws_route53_health_check" "primary_health_check" {
-  fqdn = "primary.example.com"
-  type = "HTTP"
+# main.tf
+
+terraform {
+  backend "s3" {}
 }
 
-resource "aws_route53_record" "primary" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "60"
-  records = ["192.0.2.1"]
-
-  failover_routing_policy {
-    type = "PRIMARY"
+# -----------------------
+# EC2 instances discovery
+# -----------------------
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
   }
-
-  set_identifier  = "primary-failover"
-  health_check_id = aws_route53_health_check.primary_health_check.id
 }
 
-resource "aws_route53_record" "secondary" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "60"
-  records = ["198.51.100.1"]
-
-  failover_routing_policy {
-    type = "SECONDARY"
-  }
-
-  set_identifier = "secondary-failover"
-}
-Here, traffic is directed to the primary record as long as its associated health check is passing. If the health check fails, Route 53 will automatically start responding with the secondary record's value.
-
-Geolocation Routing Policy
-Geolocation routing allows you to direct traffic based on the geographic location of your users.
-
-Terraform
-
-resource "aws_route53_record" "north_america" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "300"
-  records = ["192.0.2.1"]
-
-  geolocation_routing_policy {
-    continent = "NA"
-  }
-
-  set_identifier = "north-america"
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
 }
 
-resource "aws_route53_record" "europe" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "300"
-  records = ["198.51.100.1"]
+# -----------------------
+# EFS discovery (NEW)
+# -----------------------
+# Requires AWS provider v5.20+.
+# Dynamically lists all EFS file systems in this region.
+data "aws_efs_file_systems" "all" {}
 
-  geolocation_routing_policy {
-    continent = "EU"
-  }
+# -----------------------
+# Locals
+# -----------------------
+locals {
+  # -------------------
+  # EC2 metrics
+  ec2_instances = values(data.aws_instance.instance_details)
 
-  set_identifier = "europe"
+  cpu_metrics = [
+    for inst in local.ec2_instances : [
+      "AWS/EC2", "CPUUtilization", "InstanceId", inst.id,
+      { "label" : "CPU - ${coalesce(inst.tags.Name, inst.id)}" }
+    ]
+  ]
+  mem_metrics = [
+    for inst in local.ec2_instances : [
+      "CWAgent", "mem_used_percent", "InstanceId", inst.id,
+      { "label" : "%MEM - ${coalesce(inst.tags.Name, inst.id)}" }
+    ]
+  ]
+  disk_metrics = [
+    for inst in local.ec2_instances : [
+      "CWAgent", "disk_used_percent", "InstanceId", inst.id,
+      { "label": "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
+    ]
+  ]
+  ec2_all_metrics   = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
+  ec2_metrics_json  = jsonencode(local.ec2_all_metrics)
+
+  # -------------------
+  # Lambda metrics
+  lambda_invocations = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Invocations", "FunctionName", fn, { "label": "Invocations - ${fn}" }
+    ]
+  ]
+  lambda_errors = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Errors", "FunctionName", fn, { "label": "Errors - ${fn}" }
+    ]
+  ]
+  lambda_duration = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Duration", "FunctionName", fn, { "label": "Duration - ${fn}" }
+    ]
+  ]
+  lambda_throttles = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Throttles", "FunctionName", fn, { "label": "Throttles - ${fn}" }
+    ]
+  ]
+  lambda_concurrent = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn, { "label": "Concurrent - ${fn}" }
+    ]
+  ]
+  lambda_all_metrics  = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
+  lambda_metrics_json = jsonencode(local.lambda_all_metrics)
+
+  # -------------------
+  # SSM Run Command metrics
+  ssm_metrics = [
+    [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { "label": "SSM Commands Succeeded" } ],
+    [ "AWS/SSM-RunCommand", "CommandsFailed",           { "label": "SSM Commands Failed" } ],
+    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { "label": "SSM Commands DeliveryTimedOut" } ]
+  ]
+  ssm_metrics_json = jsonencode(local.ssm_metrics)
+
+  # -------------------
+  # EFS metrics (UPDATED to use dynamic IDs)
+  efs_ids = data.aws_efs_file_systems.all.ids
+
+  efs_burst = [
+    for id in local.efs_ids : [ "AWS/EFS", "BurstCreditBalance", "FileSystemId", id, { "label": "EFS-Burst - ${id}" } ]
+  ]
+  efs_percent_io = [
+    for id in local.efs_ids : [ "AWS/EFS", "PercentIOLimit", "FileSystemId", id, { "label": "EFS-PercentIO - ${id}" } ]
+  ]
+  efs_client_conn = [
+    for id in local.efs_ids : [ "AWS/EFS", "ClientConnections", "FileSystemId", id, { "label": "EFS-Clients - ${id}" } ]
+  ]
+  efs_storage = [
+    for id in local.efs_ids : [ "AWS/EFS", "StorageBytes", "FileSystemId", id, { "label": "EFS-Storage - ${id}" } ]
+  ]
+  efs_all_metrics  = concat(local.efs_burst, local.efs_percent_io, local.efs_client_conn, local.efs_storage)
+  efs_metrics_json = jsonencode(local.efs_all_metrics)
+
+  # -------------------
+  # Dashboard JSON
+  dashboard_body = <<-EOF
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0, "y": 0, "width": 24, "height": 6,
+      "properties": {
+        "metrics": ${local.ec2_metrics_json},
+        "view": "gauge",
+        "region": "${var.region}",
+        "period": 300,
+        "title": "EC2-Health",
+        "yAxis": { "left": { "min": 0, "max": 100 } }   // added to satisfy gauge requirement
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 7, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.lambda_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "Lambda-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 21, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.ssm_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "SSM RunCommand Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 35, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.efs_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "EFS-Health" }
+    }
+  ]
+}
+EOF
 }
 
-resource "aws_route53_record" "default" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "300"
-  records = ["203.0.113.1"]
-
-  geolocation_routing_policy {
-    country = "*"
-  }
-
-  set_identifier = "default-location"
-}
-In this setup, users from North America are routed to one IP, European users to another, and all other users are directed to a default IP address.
-
-Latency Routing Policy
-Latency-based routing directs traffic to the AWS region that provides the best latency for the requesting user.
-
-Terraform
-
-resource "aws_route53_record" "us_east" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "60"
-  records = ["192.0.2.1"]
-
-  latency_routing_policy {
-    region = "us-east-1"
-  }
-
-  set_identifier = "us-east-1-latency"
-}
-
-resource "aws_route53_record" "eu_west" {
-  zone_id = aws_route53_zone.example.zone_id
-  name    = "www.example.com"
-  type    = "A"
-  ttl     = "60"
-  records = ["198.51.100.1"]
-
-  latency_routing_policy {
-    region = "eu-west-1"
-  }
-
-  set_identifier = "eu-west-1-latency"
+# -----------------------
+# Dashboard resource
+# -----------------------
+resource "aws_cloudwatch_dashboard" "infra_health" {
+  dashboard_name = "Infra-Health-Overview"
+  dashboard_body = local.dashboard_body
 }
