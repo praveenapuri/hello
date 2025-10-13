@@ -1,20 +1,30 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.20"  # needs a recent v5.x
-    }
-  }
+# Region you’re using for the dashboard
+variable "region" {
+  type    = string
+  default = "us-east-1"
 }
 
-# Discover EFS file systems natively
-data "aws_efs_file_systems" "all" {}
+# Target capacity to compute Storage % (EFS is elastic; pick your planning size)
+variable "efs_target_capacity_bytes" {
+  type    = number
+  default = 10995116277760  # 10 TiB
+}
+
+# Get EFS IDs using /bin/sh and AWS CLI (no jq required)
+data "external" "efs_list" {
+  program = [
+    "/bin/sh",
+    "-lc",
+    "aws efs describe-file-systems --region ${var.region} --query 'FileSystems[].FileSystemId' --output json"
+  ]
+}
 
 locals {
-  efs_ids         = data.aws_efs_file_systems.all.ids
+  # external provider returns the JSON directly as 'result'
+  efs_ids         = try(data.external.efs_list.result, [])
   efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
 
-  # Build gauge metrics (same as before)
+  # Build per-filesystem gauge series (same math as before)
   efs_gauge_metrics = flatten([
     for fs_id in local.efs_ids : [
       [ "AWS/EFS", "MeteredIOBytes",     "FileSystemId", fs_id, { "stat":"Sum",     "period":60,  "id":"mi_${local.efs_id_to_token[fs_id]}" } ],
