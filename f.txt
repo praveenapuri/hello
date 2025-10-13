@@ -1,94 +1,264 @@
-# Variables expected:
-# variable "region" { type = string }
-# variable "efs_file_system_ids" { type = list(string) }
-# variable "fsx_file_system_ids" { type = list(string) }
-
-locals {
-  # --- Clean ID lists (strings only; trim empties) ---
-  efs_ids_clean = [
-    for id in var.efs_file_system_ids : trimspace(id)
-    if length(trimspace(id)) > 0
-  ]
-
-  fsx_ids_clean = [
-    for id in var.fsx_file_system_ids : trimspace(id)
-    if length(trimspace(id)) > 0
-  ]
-
-  # --- EFS GAUGE (rows = strings only + trailing renderer object) ---
-  # Use a native % metric that works in gauge: PercentIOLimit
-  efs_metrics = [
-    for fs_id in local.efs_ids_clean : [
-      "AWS/EFS", "PercentIOLimit", "FileSystemId", fs_id,
-      { stat = "Average", period = 60 }
-    ]
-  ]
-
-  # --- FSx GAUGE (Windows FS) ---
-  # Two native % metrics per filesystem; each row ends with renderer object
-  fsx_metrics = flatten([
-    for fs_id in local.fsx_ids_clean : [
-      [
-        "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", fs_id,
-        { stat = "Average", period = 60 }
-      ],
-      [
-        "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id,
-        { stat = "Average", period = 60 }
-      ]
-    ]
-  ])
-
-  # --- Widgets (drop into your widgets array) ---
-  efs_gauge_widget = {
-    type   = "metric"
-    x      = 0
-    y      = 0
-    width  = 24
-    height = 6
-    properties = {
-      region  = var.region
-      view    = "gauge"
-      title   = "EFS - PercentIOLimit (%)"
-      period  = 60
-      stat    = "Average"
-      yAxis   = { left = { min = 0, max = 100 } }
-      metrics = local.efs_metrics
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
     }
   }
+  backend "s3" {}
+}
 
-  fsx_gauge_widget = {
-    type   = "metric"
-    x      = 0
-    y      = 7
-    width  = 24
-    height = 6
-    properties = {
-      region  = var.region
-      view    = "gauge"
-      title   = "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
-      period  = 60
-      stat    = "Average"
-      yAxis   = { left = { min = 0, max = 100 } }
-      metrics = local.fsx_metrics
-    }
+provider "aws" {
+  region = var.region
+}
+
+# -----------------------
+# EC2 instances discovery
+# -----------------------
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
   }
 }
 
-# If you build the dashboard from a widgets list, include:
-# widgets = concat(
-#   [
-#     # ...your existing widgets...
-#   ],
-#   [
-#     local.efs_gauge_widget,
-#     local.fsx_gauge_widget
-#   ]
-# )
-#
-# And then:
-# dashboard_body = jsonencode({
-#   start          = "-PT24H"
-#   periodOverride = "inherit"
-#   widgets        = local.widgets
-# })
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
+
+# -----------------------
+# Variables
+# -----------------------
+variable "region" {
+  description = "AWS Region"
+  type        = string
+}
+
+variable "lambda_function_names" {
+  description = "List of Lambda function names to include in dashboard"
+  type        = list(string)
+}
+
+# NEW: EFS & FSx IDs from variables
+variable "efs_file_system_ids" {
+  description = "List of EFS FileSystemIds (e.g., [\"fs-0123...\"])"
+  type        = list(string)
+  default     = []
+}
+
+variable "fsx_file_system_ids" {
+  description = "List of FSx (Windows FS) FileSystemIds (e.g., [\"fs-0abc...\"])"
+  type        = list(string)
+  default     = []
+}
+
+# -----------------------
+# Locals
+# -----------------------
+locals {
+  # extract Lambda names from var
+  lambda_function_names = var.lambda_function_names
+
+  # --- EC2 Metrics Generation (UNCHANGED) ---
+  cpu_metrics = [
+    for instance in values(data.aws_instance.instance_details) : [
+      "AWS/EC2", "CPUUtilization", "InstanceId", instance.id,
+      { "label" : "CPU - ${coalesce(instance.tags.Name, instance.id)}" }
+    ]
+  ]
+  mem_metrics = [
+    for instance in values(data.aws_instance.instance_details) : [
+      "CWAgent", "mem_used_percent", "InstanceId", instance.id,
+      { "label" : "%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}" }
+    ]
+  ]
+  disk_metrics = [
+    for instance in values(data.aws_instance.instance_details) : [
+      "CWAgent", "disk_used_percent", "InstanceId", instance.id,
+      { "label": "%Disk - ${coalesce(instance.tags.Name, instance.id)}" }
+    ]
+  ]
+
+  all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
+  metrics_string = jsonencode(local.all_metrics)
+
+  # --- Lambda Metrics Generation (UNCHANGED) ---
+  lambda_invocations = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Invocations", "FunctionName", fn,
+      { "label": "Invocations - ${fn}" }
+    ]
+  ]
+  lambda_errors = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Errors", "FunctionName", fn,
+      { "label": "Errors - ${fn}" }
+    ]
+  ]
+  lambda_duration = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Duration", "FunctionName", fn,
+      { "label": "Duration - ${fn}" }
+    ]
+  ]
+  lambda_throttles = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Throttles", "FunctionName", fn,
+      { "label": "Throttles - ${fn}" }
+    ]
+  ]
+  lambda_concurrent = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn,
+      { "label": "Concurrent - ${fn}" }
+    ]
+  ]
+
+  all_lambda_metrics = concat(
+    local.lambda_invocations,
+    local.lambda_errors,
+    local.lambda_duration,
+    local.lambda_throttles,
+    local.lambda_concurrent
+  )
+  lambda_metrics_string = jsonencode(local.all_lambda_metrics)
+
+  # --- EFS Metrics Generation (NEW) ---
+  # Use native EFS metrics that work cleanly without metric math:
+  # - PercentIOLimit (percentage)
+  # - StorageBytes   (absolute bytes)
+  efs_percent_io = [
+    for id in var.efs_file_system_ids : [
+      "AWS/EFS", "PercentIOLimit", "FileSystemId", id,
+      { "label": "EFS-PercentIOLimit - ${id}" }
+    ]
+  ]
+  efs_storage = [
+    for id in var.efs_file_system_ids : [
+      "AWS/EFS", "StorageBytes", "FileSystemId", id,
+      { "label": "EFS-StorageBytes - ${id}" }
+    ]
+  ]
+  efs_all_metrics  = concat(local.efs_percent_io, local.efs_storage)
+  efs_metrics_string = jsonencode(local.efs_all_metrics)
+
+  # --- FSx (Windows FS) Metrics Generation (NEW) ---
+  # Both are native percentage metrics:
+  # - StorageCapacityUtilization
+  # - FileServerDiskThroughputUtilization
+  fsx_storage_util = [
+    for id in var.fsx_file_system_ids : [
+      "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", id,
+      { "label": "FSx-StorageCapacityUtilization - ${id}" }
+    ]
+  ]
+  fsx_disk_tp_util = [
+    for id in var.fsx_file_system_ids : [
+      "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", id,
+      { "label": "FSx-FileServerDiskThroughputUtilization - ${id}" }
+    ]
+  ]
+  fsx_all_metrics  = concat(local.fsx_storage_util, local.fsx_disk_tp_util)
+  fsx_metrics_string = jsonencode(local.fsx_all_metrics)
+
+  # --- Dashboard JSON (CONCAT all widgets) ---
+  final = <<-EOF
+{
+  "widgets" : [
+    {
+      "type"   : "metric",
+      "x": 0,
+      "y": 0,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.metrics_string},
+        "view": "gauge",
+        "region" :  "${var.region}",
+        "yAxis" : {
+          "left" : {
+            "min" : 2,
+            "max" : 100
+          }
+        },
+        "liveData": true,
+        "period": 300,
+        "title": "EC2-Health"
+      }
+    },
+    {
+      "type"   : "metric",
+      "x": 0,
+      "y": 7,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.lambda_metrics_string},
+        "view": "timeSeries",
+        "region" :  "${var.region}",
+        "period": 300,
+        "title": "Lambda-Health"
+      }
+    },
+
+    /* ---------- NEW: EFS widget ---------- */
+    {
+      "type"   : "metric",
+      "x": 12,
+      "y": 0,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.efs_metrics_string},
+        "view": "timeSeries",
+        "region" :  "${var.region}",
+        "period": 300,
+        "title": "EFS - PercentIOLimit & StorageBytes"
+      }
+    },
+
+    /* ---------- NEW: FSx widget ---------- */
+    {
+      "type"   : "metric",
+      "x": 12,
+      "y": 7,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.fsx_metrics_string},
+        "view": "gauge",
+        "region" :  "${var.region}",
+        "yAxis" : {
+          "left" : {
+            "min" : 0,
+            "max" : 100
+          }
+        },
+        "period": 60,
+        "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
+      }
+    }
+  ]
+}
+EOF
+}
+
+# -----------------------
+# Outputs
+# -----------------------
+output "raw_json_string" {
+  value = replace(local.final, "\n", " ")
+}
+
+# -----------------------
+# CloudWatch Dashboard
+# -----------------------
+resource "aws_cloudwatch_dashboard" "health" {
+  dashboard_name = "EC2-Lambda-Health-dev"
+  dashboard_body = local.final
+}
