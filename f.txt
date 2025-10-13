@@ -2,14 +2,25 @@
 
 terraform {
   backend "s3" {}
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 4.0"
+    }
+  }
 }
 
-##############################################
-# If not already defined elsewhere:
-##############################################
 variable "region" {
   type    = string
   default = "us-east-1"
+}
+
+# Choose your planning capacity for the storage utilization gauge (EFS is elastic).
+# Example: 10 TiB
+variable "efs_target_capacity_bytes" {
+  description = "Target capacity (bytes) used to compute EFS storage utilization %."
+  type        = number
+  default     = 10995116277760
 }
 
 variable "lambda_function_names" {
@@ -17,17 +28,11 @@ variable "lambda_function_names" {
   default = []
 }
 
-# Choose the “capacity” you care about for the storage utilization gauge (EFS is elastic).
-# Example default = 10 TiB
-variable "efs_target_capacity_bytes" {
-  description = "Target capacity (bytes) for EFS StorageCapacityUtilization%."
-  type        = number
-  default     = 10995116277760
+provider "aws" {
+  region = var.region
 }
 
-##############################################
-# EC2 instances discovery
-##############################################
+# ---------------- EC2 discovery (as in your file) ----------------
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
@@ -40,11 +45,20 @@ data "aws_instance" "instance_details" {
   instance_id = each.key
 }
 
-##############################################
-# Locals
-##############################################
+# ---------------- EFS discovery via AWS CLI (no fixed IDs) ----------------
+# Requires: aws & jq on PATH, with credentials for the same account/region.
+data "external" "efs_list" {
+  program = ["bash", "-lc", <<'BASH'
+set -euo pipefail
+aws efs describe-file-systems --output json \
+| jq '{ids: [.FileSystems[].FileSystemId]}'
+BASH
+  ]
+}
+
+# ---------------- Locals ----------------
 locals {
-  # ------------------- EC2 metrics -------------------
+  # ---------- EC2 ----------
   ec2_instances = values(data.aws_instance.instance_details)
 
   cpu_metrics = [
@@ -68,7 +82,7 @@ locals {
   ec2_all_metrics  = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
   ec2_metrics_json = jsonencode(local.ec2_all_metrics)
 
-  # ------------------- Lambda metrics -------------------
+  # ---------- Lambda ----------
   lambda_invocations = [
     for fn in var.lambda_function_names : [
       "AWS/Lambda", "Invocations", "FunctionName", fn, { "label": "Invocations - ${fn}" }
@@ -97,7 +111,7 @@ locals {
   lambda_all_metrics  = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
   lambda_metrics_json = jsonencode(local.lambda_all_metrics)
 
-  # ------------------- SSM Run Command -------------------
+  # ---------- SSM RunCommand ----------
   ssm_metrics = [
     [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { "label": "SSM Commands Succeeded" } ],
     [ "AWS/SSM-RunCommand", "CommandsFailed",           { "label": "SSM Commands Failed" } ],
@@ -105,7 +119,51 @@ locals {
   ]
   ssm_metrics_json = jsonencode(local.ssm_metrics)
 
-  # ------------------- Dashboard JSON -------------------
+  # ---------- EFS IDs from external ----------
+  efs_ids = try(data.external.efs_list.result.ids, [])
+
+  # Helper to create safe IDs for metric-math identifiers (no dashes)
+  efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
+
+  # ---------- EFS gauge metrics (per filesystem, single window) ----------
+  # For each FileSystemId we add:
+  #   1) MeteredIOBytes (Sum, 60s)            -> id mi_<token>
+  #   2) PermittedThroughput (Avg, 60s)       -> id pt_<token>
+  #   3) (mi/60)/pt*100                       -> id tp_<token>, label "<fs>-FileServerDiskThroughputUtilization"
+  #   4) StorageBytes (Avg, 300s)             -> id sb_<token>
+  #   5) sb/target_capacity*100               -> id su_<token>, label "<fs>-StorageCapacityUtilization"
+  efs_gauge_metrics = flatten([
+    for fs_id in local.efs_ids : [
+      [
+        "AWS/EFS", "MeteredIOBytes", "FileSystemId", fs_id,
+        { "stat": "Sum", "period": 60, "id": "mi_${local.efs_id_to_token[fs_id]}" }
+      ],
+      [
+        "AWS/EFS", "PermittedThroughput", "FileSystemId", fs_id,
+        { "stat": "Average", "period": 60, "id": "pt_${local.efs_id_to_token[fs_id]}" }
+      ],
+      [
+        { "expression": "(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100",
+          "id": "tp_${local.efs_id_to_token[fs_id]}",
+          "label": "${fs_id}-FileServerDiskThroughputUtilization"
+        }
+      ],
+      [
+        "AWS/EFS", "StorageBytes", "FileSystemId", fs_id,
+        { "stat": "Average", "period": 300, "id": "sb_${local.efs_id_to_token[fs_id]}" }
+      ],
+      [
+        { "expression": "sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",
+          "id": "su_${local.efs_id_to_token[fs_id]}",
+          "label": "${fs_id}-StorageCapacityUtilization"
+        }
+      ]
+    ]
+  ])
+
+  efs_gauge_json = jsonencode(local.efs_gauge_metrics)
+
+  # ---------- Dashboard ----------
   dashboard_body = <<-EOF
 {
   "start": "-PT24H",
@@ -121,7 +179,7 @@ locals {
         "period": 300,
         "stat": "Average",
         "title": "EC2-Health",
-        "yAxis": { "left": { "min": 0, "max": 100 } }   // required for gauge view
+        "yAxis": { "left": { "min": 0, "max": 100 } }
       }
     },
     {
@@ -147,7 +205,7 @@ locals {
       }
     },
 
-    // ---------------- EFS single-window G A U G E (two metrics) ----------------
+    # --------------- EFS gauge (single window, multiple needles) ---------------
     {
       "type": "metric",
       "x": 0, "y": 35, "width": 24, "height": 6,
@@ -158,28 +216,15 @@ locals {
         "period": 60,
         "stat": "Average",
         "yAxis": { "left": { "min": 0, "max": 100 } },
-
-        "metrics": [
-          // ---- Throughput Utilization = ((MeteredIOBytes sum per 60s)/60)/PermittedThroughput avg * 100
-          [ { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\\\"MeteredIOBytes\\\"', 'Sum', 60)",     "id": "m_metered", "label": "{{FileSystemId}}-MeteredIOBytes" } ],
-          [ { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\\\"PermittedThroughput\\\"', 'Average', 60)", "id": "m_perm",    "label": "{{FileSystemId}}-PermittedThroughput" } ],
-          [ { "expression": "(m_metered/60)/m_perm*100", "id": "efs_tp_util", "label": "{{FileSystemId}}-FileServerDiskThroughputUtilization" } ],
-
-          // ---- Storage Utilization = StorageBytes / target * 100  (use 5-min period)
-          [ { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\\\"StorageBytes\\\"', 'Average', 300)", "id": "m_storage", "label": "{{FileSystemId}}-StorageBytes" } ],
-          [ { "expression": "m_storage / ${var.efs_target_capacity_bytes} * 100", "id": "efs_storage_util", "label": "{{FileSystemId}}-StorageCapacityUtilization" } ]
-        ]
+        "metrics": ${jsonencode(local.efs_gauge_metrics)}
       }
     }
-    // ---------------- end EFS gauge ----------------
+    # --------------- end EFS gauge --------------------------------------------
   ]
 }
 EOF
 }
 
-##############################################
-# Dashboard resource
-##############################################
 resource "aws_cloudwatch_dashboard" "infra_health" {
   dashboard_name = "Infra-Health-Overview"
   dashboard_body = local.dashboard_body
