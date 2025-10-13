@@ -138,37 +138,44 @@ locals {
 
   ###########################
   # EFS gauge (single window)
-  # Per filesystem:
-  #  - MeteredIOBytes (Sum, 60s) -> mi_<token>
-  #  - PermittedThroughput (Avg, 60s) -> pt_<token>
-  #  - (mi/60)/pt*100 -> "<fs>-FileServerDiskThroughputUtilization"
-  #  - StorageBytes (Avg, 300s) -> sb_<token>
-  #  - sb/target*100 -> "<fs>-StorageCapacityUtilization"
+  #
+  # For EACH filesystem, we add:
+  #   Raw (hidden) series with IDs:
+  #     ["AWS/EFS","MeteredIOBytes","FileSystemId","<fs>", {id:"mi_<token>", visible:false}]
+  #     ["AWS/EFS","PermittedThroughput","FileSystemId","<fs>", {id:"pt_<token>", visible:false}]
+  #     ["AWS/EFS","StorageBytes","FileSystemId","<fs>", {id:"sb_<token>", visible:false}]
+  #   Expression rows (what you see in gauge):
+  #     [{"expression":"(mi_<token>/60)/pt_<token>*100","id":"tp_<token>","label":"<fs>-FileServerDiskThroughputUtilization"}]
+  #     [{"expression":"sb_<token> / <target> * 100","id":"su_<token>","label":"<fs>-StorageCapacityUtilization"}]
   ###########################
   efs_ids         = var.efs_file_system_ids
   efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
 
   efs_gauge_metrics = flatten([
     for fs_id in local.efs_ids : [
+      # Raw, hidden inputs
       [
         "AWS/EFS", "MeteredIOBytes", "FileSystemId", fs_id,
-        { stat = "Sum", period = 60, id = "mi_${local.efs_id_to_token[fs_id]}" }
+        { id = "mi_${local.efs_id_to_token[fs_id]}", visible = false }
       ],
       [
         "AWS/EFS", "PermittedThroughput", "FileSystemId", fs_id,
-        { stat = "Average", period = 60, id = "pt_${local.efs_id_to_token[fs_id]}" }
+        { id = "pt_${local.efs_id_to_token[fs_id]}", visible = false }
       ],
       [
+        "AWS/EFS", "StorageBytes", "FileSystemId", fs_id,
+        { id = "sb_${local.efs_id_to_token[fs_id]}", visible = false }
+      ],
+      # Expressions (visible)
+      [
         { expression = "(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100",
+          id         = "tp_${local.efs_id_to_token[fs_id]}",
           label      = "${fs_id}-FileServerDiskThroughputUtilization"
         }
       ],
       [
-        "AWS/EFS", "StorageBytes", "FileSystemId", fs_id,
-        { stat = "Average", period = 300, id = "sb_${local.efs_id_to_token[fs_id]}" }
-      ],
-      [
         { expression = "sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",
+          id         = "su_${local.efs_id_to_token[fs_id]}",
           label      = "${fs_id}-StorageCapacityUtilization"
         }
       ]
@@ -177,7 +184,7 @@ locals {
 
   ###########################
   # FSx (Windows FS) gauge (single window)
-  # Each row must be: ["AWS/FSx","Metric","FileSystemId","<fs-id>", { ...renderer... }]
+  # Each raw row is an array of strings + ONE trailing object with only 'label'
   ###########################
   fsx_ids = var.fsx_file_system_ids
 
@@ -185,11 +192,11 @@ locals {
     for fs_id in local.fsx_ids : [
       [
         "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", fs_id,
-        { stat = "Average", period = 60, label = "${fs_id}-StorageCapacityUtilization" }
+        { label = "${fs_id}-StorageCapacityUtilization" }
       ],
       [
         "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id,
-        { stat = "Average", period = 60, label = "${fs_id}-FileServerDiskThroughputUtilization" }
+        { label = "${fs_id}-FileServerDiskThroughputUtilization" }
       ]
     ]
   ])
