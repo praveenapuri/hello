@@ -1,5 +1,5 @@
 #############################
-# main.tf
+# main.tf (schema-safe gauges)
 #############################
 
 terraform {
@@ -20,7 +20,6 @@ variable "region" {
   default = "us-east-1"
 }
 
-# Lambda functions you want charted (time series widget)
 variable "lambda_function_names" {
   type    = list(string)
   default = []
@@ -33,7 +32,7 @@ variable "efs_file_system_ids" {
   default     = []
 }
 
-# EFS is elastic; pick a planning capacity to compute Storage % (e.g., 10 TiB)
+# EFS is elastic; choose a planning capacity to compute Storage % (e.g., 10 TiB)
 variable "efs_target_capacity_bytes" {
   description = "Target capacity (bytes) to compute EFS storage utilization %."
   type        = number
@@ -42,7 +41,7 @@ variable "efs_target_capacity_bytes" {
 
 # FSx (Windows File Server): list your filesystem IDs here
 variable "fsx_file_system_ids" {
-  description = "FSx FileSystemIds to chart (Windows FS)"
+  description = "FSx (Windows FS) FileSystemIds to chart"
   type        = list(string)
   default     = []
 }
@@ -78,21 +77,21 @@ locals {
   cpu_metrics = [
     for inst in local.ec2_instances : [
       "AWS/EC2", "CPUUtilization", "InstanceId", inst.id,
-      { label : "CPU - ${coalesce(inst.tags.Name, inst.id)}" }
+      { label = "CPU - ${coalesce(inst.tags.Name, inst.id)}" }
     ]
   ]
 
   mem_metrics = [
     for inst in local.ec2_instances : [
       "CWAgent", "mem_used_percent", "InstanceId", inst.id,
-      { label : "%MEM - ${coalesce(inst.tags.Name, inst.id)}" }
+      { label = "%MEM - ${coalesce(inst.tags.Name, inst.id)}" }
     ]
   ]
 
   disk_metrics = [
     for inst in local.ec2_instances : [
       "CWAgent", "disk_used_percent", "InstanceId", inst.id,
-      { label : "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
+      { label = "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
     ]
   ]
 
@@ -103,27 +102,27 @@ locals {
   ###########################
   lambda_invocations = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Invocations", "FunctionName", fn, { label: "Invocations - ${fn}" }
+      "AWS/Lambda", "Invocations", "FunctionName", fn, { label = "Invocations - ${fn}" }
     ]
   ]
   lambda_errors = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Errors", "FunctionName", fn, { label: "Errors - ${fn}" }
+      "AWS/Lambda", "Errors", "FunctionName", fn, { label = "Errors - ${fn}" }
     ]
   ]
   lambda_duration = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Duration", "FunctionName", fn, { label: "Duration - ${fn}" }
+      "AWS/Lambda", "Duration", "FunctionName", fn, { label = "Duration - ${fn}" }
     ]
   ]
   lambda_throttles = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Throttles", "FunctionName", fn, { label: "Throttles - ${fn}" }
+      "AWS/Lambda", "Throttles", "FunctionName", fn, { label = "Throttles - ${fn}" }
     ]
   ]
   lambda_concurrent = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn, { label: "Concurrent - ${fn}" }
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn, { label = "Concurrent - ${fn}" }
     ]
   ]
   lambda_all_metrics = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
@@ -132,9 +131,9 @@ locals {
   # SSM RunCommand (time series)
   ###########################
   ssm_metrics = [
-    [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { label: "SSM Commands Succeeded" } ],
-    [ "AWS/SSM-RunCommand", "CommandsFailed",           { label: "SSM Commands Failed" } ],
-    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { label: "SSM Commands DeliveryTimedOut" } ]
+    [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { label = "SSM Commands Succeeded" } ],
+    [ "AWS/SSM-RunCommand", "CommandsFailed",           { label = "SSM Commands Failed" } ],
+    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { label = "SSM Commands DeliveryTimedOut" } ]
   ]
 
   ###########################
@@ -153,24 +152,24 @@ locals {
     for fs_id in local.efs_ids : [
       [
         "AWS/EFS", "MeteredIOBytes", "FileSystemId", fs_id,
-        { stat: "Sum", period: 60, id: "mi_${local.efs_id_to_token[fs_id]}" }
+        { stat = "Sum", period = 60, id = "mi_${local.efs_id_to_token[fs_id]}" }
       ],
       [
         "AWS/EFS", "PermittedThroughput", "FileSystemId", fs_id,
-        { stat: "Average", period: 60, id: "pt_${local.efs_id_to_token[fs_id]}" }
+        { stat = "Average", period = 60, id = "pt_${local.efs_id_to_token[fs_id]}" }
       ],
       [
-        { expression: "(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100",
-          label: "${fs_id}-FileServerDiskThroughputUtilization"
+        { expression = "(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100",
+          label      = "${fs_id}-FileServerDiskThroughputUtilization"
         }
       ],
       [
         "AWS/EFS", "StorageBytes", "FileSystemId", fs_id,
-        { stat: "Average", period: 300, id: "sb_${local.efs_id_to_token[fs_id]}" }
+        { stat = "Average", period = 300, id = "sb_${local.efs_id_to_token[fs_id]}" }
       ],
       [
-        { expression: "sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",
-          label: "${fs_id}-StorageCapacityUtilization"
+        { expression = "sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",
+          label      = "${fs_id}-StorageCapacityUtilization"
         }
       ]
     ]
@@ -178,25 +177,25 @@ locals {
 
   ###########################
   # FSx (Windows FS) gauge (single window)
-  # Per filesystem: StorageCapacityUtilization, FileServerDiskThroughputUtilization
-  # NOTE: This is for FSx for Windows File Server (namespace AWS/FSx with FileSystemId).
+  # Each row must be: ["AWS/FSx","Metric","FileSystemId","<fs-id>", { ...renderer... }]
   ###########################
-  fsx_ids         = var.fsx_file_system_ids
+  fsx_ids = var.fsx_file_system_ids
+
   fsx_gauge_metrics = flatten([
     for fs_id in local.fsx_ids : [
       [
         "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", fs_id,
-        { stat: "Average", period: 60, label: "${fs_id}-StorageCapacityUtilization" }
+        { stat = "Average", period = 60, label = "${fs_id}-StorageCapacityUtilization" }
       ],
       [
         "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id,
-        { stat: "Average", period: 60, label: "${fs_id}-FileServerDiskThroughputUtilization" }
+        { stat = "Average", period = 60, label = "${fs_id}-FileServerDiskThroughputUtilization" }
       ]
     ]
   ])
 
   ###########################
-  # Widgets (build as HCL objects, not strings)
+  # Widgets (native HCL objects)
   ###########################
   widgets = [
     # EC2 gauge
