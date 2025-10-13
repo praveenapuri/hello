@@ -1,29 +1,62 @@
-  # --- SSM Jobs (RunCommand) Metrics (NEW) ---
-  # String-only rows + trailing label objects (same style as your EC2/Lambda/EFS/FSx)
-  ssm_jobs_metrics = [
-    [ "AWS/SSM-RunCommand", "CommandsInProgress",        { "label": "SSM-CommandsInProgress" } ],
-    [ "AWS/SSM-RunCommand", "CommandsSucceeded",         { "label": "SSM-CommandsSucceeded" } ],
-    [ "AWS/SSM-RunCommand", "CommandsFailed",            { "label": "SSM-CommandsFailed" } ],
-    [ "AWS/SSM-RunCommand", "CommandsCancelled",         { "label": "SSM-CommandsCancelled" } ],
-    [ "AWS/SSM-RunCommand", "CommandsTimedOut",          { "label": "SSM-CommandsTimedOut" } ],
-    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut",  { "label": "SSM-CommandsDeliveryTimedOut" } ]
+# EBS volume IDs to chart
+variable "ebs_volume_ids" {
+  description = "List of EBS VolumeIds (e.g., [\"vol-0123...\"])"
+  type        = list(string)
+  default     = []
+}
+
+
+locals {
+  # Clean/trim to ensure plain strings only
+  ebs_ids_clean = [
+    for id in var.ebs_volume_ids : tostring(trimspace(id))
+    if length(trimspace(id)) > 0
   ]
-  ssm_jobs_metrics_string = jsonencode(local.ssm_jobs_metrics)
+
+  # EBS time-series metrics (strings-only rows)
+  # - BurstBalance (%) — good for burstable volumes
+  # - VolumeQueueLength — depth indicator
+  # - VolumeReadOps / VolumeWriteOps — IO rate
+  ebs_metrics = flatten([
+    for vol in local.ebs_ids_clean : [
+      [ "AWS/EBS", "BurstBalance",       "VolumeId", vol ],
+      [ "AWS/EBS", "VolumeQueueLength",  "VolumeId", vol ],
+      [ "AWS/EBS", "VolumeReadOps",      "VolumeId", vol ],
+      [ "AWS/EBS", "VolumeWriteOps",     "VolumeId", vol ]
+    ]
+  ])
+
+  # EBS widget (timeSeries to accommodate mixed units)
+  ebs_widget = {
+    type   = "metric"
+    x      = 0
+    y      = 35    # adjust if this collides with your layout
+    width  = 24
+    height = 6
+    properties = {
+      region  = var.region
+      view    = "timeSeries"
+      title   = "EBS - BurstBalance, QueueLength, ReadOps, WriteOps"
+      period  = 300
+      stat    = "Average"
+      metrics = local.ebs_metrics
+    }
+  }
+}
 
 
-    /* ---------- NEW: SSM Jobs (RunCommand) widget ---------- */
     {
       "type": "metric",
       "x": 0,
-      "y": 14,
+      "y": 35,
       "width": 24,
       "height": 6,
       "properties": {
-        "metrics": ${local.ssm_jobs_metrics_string},
+        "metrics": ${jsonencode(local.ebs_metrics)},
         "view": "timeSeries",
         "region": "${var.region}",
-        "period": 60,
-        "stat": "Sum",
-        "title": "SSM Jobs - RunCommand Status"
+        "period": 300,
+        "stat": "Average",
+        "title": "EBS - BurstBalance, QueueLength, ReadOps, WriteOps"
       }
     }
