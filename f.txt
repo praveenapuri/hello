@@ -1,5 +1,5 @@
 #############################
-# main.tf
+# main.tf (strict-string metrics + ID validation)
 #############################
 
 terraform {
@@ -20,7 +20,6 @@ variable "region" {
   default = "us-east-1"
 }
 
-# Lambda functions for time-series
 variable "lambda_function_names" {
   type    = list(string)
   default = []
@@ -31,6 +30,10 @@ variable "efs_file_system_ids" {
   description = "EFS FileSystemIds (e.g., [\"fs-0123...\",\"fs-0456...\"])"
   type        = list(string)
   default     = []
+  validation {
+    condition     = alltrue([for id in var.efs_file_system_ids : can(regex("^fs-[0-9a-z-]+$", trimspace(id)))])
+    error_message = "All EFS FileSystemIds must be non-empty strings like \"fs-xxxxxxxx\"."
+  }
 }
 
 # FSx (Windows FS) FileSystemIds
@@ -38,6 +41,10 @@ variable "fsx_file_system_ids" {
   description = "FSx (Windows File Server) FileSystemIds"
   type        = list(string)
   default     = []
+  validation {
+    condition     = alltrue([for id in var.fsx_file_system_ids : can(regex("^fs-[0-9a-z-]+$", trimspace(id)))])
+    error_message = "All FSx FileSystemIds must be non-empty strings like \"fs-xxxxxxxx\"."
+  }
 }
 
 provider "aws" {
@@ -63,81 +70,104 @@ data "aws_instance" "instance_details" {
 # Locals
 #############################
 locals {
-  # ---------------- EC2 (gauge-like schema) ----------------
+  ###########################
+  # EC2 metrics (gauge)
+  ###########################
   ec2_instances = values(data.aws_instance.instance_details)
 
+  # rows = strings only
   cpu_metrics = [
     for inst in local.ec2_instances : [
-      "AWS/EC2", "CPUUtilization", "InstanceId", inst.id
+      "AWS/EC2", "CPUUtilization", "InstanceId", tostring(inst.id)
     ]
   ]
   mem_metrics = [
     for inst in local.ec2_instances : [
-      "CWAgent", "mem_used_percent", "InstanceId", inst.id
+      "CWAgent", "mem_used_percent", "InstanceId", tostring(inst.id)
     ]
   ]
   disk_metrics = [
     for inst in local.ec2_instances : [
-      "CWAgent", "disk_used_percent", "InstanceId", inst.id
+      "CWAgent", "disk_used_percent", "InstanceId", tostring(inst.id)
     ]
   ]
   ec2_all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
 
-  # ---------------- Lambda (time series) ----------------
+  ###########################
+  # Lambda metrics (time series) – strings only
+  ###########################
   lambda_invocations = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Invocations", "FunctionName", fn
+      "AWS/Lambda", "Invocations", "FunctionName", tostring(fn)
     ]
   ]
   lambda_errors = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Errors", "FunctionName", fn
+      "AWS/Lambda", "Errors", "FunctionName", tostring(fn)
     ]
   ]
   lambda_duration = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Duration", "FunctionName", fn
+      "AWS/Lambda", "Duration", "FunctionName", tostring(fn)
     ]
   ]
   lambda_throttles = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Throttles", "FunctionName", fn
+      "AWS/Lambda", "Throttles", "FunctionName", tostring(fn)
     ]
   ]
   lambda_concurrent = [
     for fn in var.lambda_function_names : [
-      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", tostring(fn)
     ]
   ]
   lambda_all_metrics = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
 
-  # ---------------- SSM RunCommand (time series) ----------------
+  ###########################
+  # SSM RunCommand (time series) – strings only
+  ###########################
   ssm_metrics = [
     [ "AWS/SSM-RunCommand", "CommandsSucceeded" ],
     [ "AWS/SSM-RunCommand", "CommandsFailed" ],
     [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut" ]
   ]
 
-  # ---------------- EFS (gauge; same structure as EC2) ----------------
-  # Using native % metric PercentIOLimit so it fits a 0–100 gauge.
-  efs_ids = var.efs_file_system_ids
+  ###########################
+  # Clean & coerce IDs (avoid nulls/empties/non-strings)
+  ###########################
+  efs_ids_clean = [
+    for id in var.efs_file_system_ids : tostring(trimspace(id))
+    if length(trimspace(id)) > 0
+  ]
+
+  fsx_ids_clean = [
+    for id in var.fsx_file_system_ids : tostring(trimspace(id))
+    if length(trimspace(id)) > 0
+  ]
+
+  ###########################
+  # EFS gauge (strings only rows)
+  # Use native percent: PercentIOLimit (0–100)
+  ###########################
   efs_all_metrics = flatten([
-    for fs_id in local.efs_ids : [
+    for fs_id in local.efs_ids_clean : [
       [ "AWS/EFS", "PercentIOLimit", "FileSystemId", fs_id ]
     ]
   ])
 
-  # ---------------- FSx (gauge; same structure as EC2) ----------------
-  # Native % metrics, perfect for 0–100 gauge.
-  fsx_ids = var.fsx_file_system_ids
+  ###########################
+  # FSx gauge (strings only rows) – Windows FS
+  ###########################
   fsx_all_metrics = flatten([
-    for fs_id in local.fsx_ids : [
+    for fs_id in local.fsx_ids_clean : [
       [ "AWS/FSx", "StorageCapacityUtilization",          "FileSystemId", fs_id ],
       [ "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id ]
     ]
   ])
 
-  # ---------------- Widgets (HCL objects) ----------------
+  ###########################
+  # Widgets (HCL objects)
+  ###########################
   widgets = [
     # EC2 gauge
     {
@@ -189,7 +219,7 @@ locals {
       }
     },
 
-    # EFS gauge (structured like EC2)
+    # EFS gauge
     {
       type   = "metric"
       x      = 0
@@ -207,7 +237,7 @@ locals {
       }
     },
 
-    # FSx gauge (structured like EC2)
+    # FSx gauge
     {
       type   = "metric"
       x      = 0
@@ -226,7 +256,9 @@ locals {
     }
   ]
 
+  #############################
   # Final dashboard JSON
+  #############################
   dashboard_body = jsonencode({
     start          = "-PT24H"
     periodOverride = "inherit"
