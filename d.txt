@@ -84,3 +84,222 @@ locals {
 
   mem_metrics = [
     for inst in local.ec2_instances : [
+      "CWAgent", "mem_used_percent", "InstanceId", inst.id,
+      { label : "%MEM - ${coalesce(inst.tags.Name, inst.id)}" }
+    ]
+  ]
+
+  disk_metrics = [
+    for inst in local.ec2_instances : [
+      "CWAgent", "disk_used_percent", "InstanceId", inst.id,
+      { label : "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
+    ]
+  ]
+
+  ec2_all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
+
+  ###########################
+  # Lambda metrics (time series)
+  ###########################
+  lambda_invocations = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Invocations", "FunctionName", fn, { label: "Invocations - ${fn}" }
+    ]
+  ]
+  lambda_errors = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Errors", "FunctionName", fn, { label: "Errors - ${fn}" }
+    ]
+  ]
+  lambda_duration = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Duration", "FunctionName", fn, { label: "Duration - ${fn}" }
+    ]
+  ]
+  lambda_throttles = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "Throttles", "FunctionName", fn, { label: "Throttles - ${fn}" }
+    ]
+  ]
+  lambda_concurrent = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn, { label: "Concurrent - ${fn}" }
+    ]
+  ]
+  lambda_all_metrics = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
+
+  ###########################
+  # SSM RunCommand (time series)
+  ###########################
+  ssm_metrics = [
+    [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { label: "SSM Commands Succeeded" } ],
+    [ "AWS/SSM-RunCommand", "CommandsFailed",           { label: "SSM Commands Failed" } ],
+    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { label: "SSM Commands DeliveryTimedOut" } ]
+  ]
+
+  ###########################
+  # EFS gauge (single window)
+  # Per filesystem:
+  #  - MeteredIOBytes (Sum, 60s) -> mi_<token>
+  #  - PermittedThroughput (Avg, 60s) -> pt_<token>
+  #  - (mi/60)/pt*100 -> "<fs>-FileServerDiskThroughputUtilization"
+  #  - StorageBytes (Avg, 300s) -> sb_<token>
+  #  - sb/target*100 -> "<fs>-StorageCapacityUtilization"
+  ###########################
+  efs_ids         = var.efs_file_system_ids
+  efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
+
+  efs_gauge_metrics = flatten([
+    for fs_id in local.efs_ids : [
+      [
+        "AWS/EFS", "MeteredIOBytes", "FileSystemId", fs_id,
+        { stat: "Sum", period: 60, id: "mi_${local.efs_id_to_token[fs_id]}" }
+      ],
+      [
+        "AWS/EFS", "PermittedThroughput", "FileSystemId", fs_id,
+        { stat: "Average", period: 60, id: "pt_${local.efs_id_to_token[fs_id]}" }
+      ],
+      [
+        { expression: "(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100",
+          label: "${fs_id}-FileServerDiskThroughputUtilization"
+        }
+      ],
+      [
+        "AWS/EFS", "StorageBytes", "FileSystemId", fs_id,
+        { stat: "Average", period: 300, id: "sb_${local.efs_id_to_token[fs_id]}" }
+      ],
+      [
+        { expression: "sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",
+          label: "${fs_id}-StorageCapacityUtilization"
+        }
+      ]
+    ]
+  ])
+
+  ###########################
+  # FSx (Windows FS) gauge (single window)
+  # Per filesystem: StorageCapacityUtilization, FileServerDiskThroughputUtilization
+  # NOTE: This is for FSx for Windows File Server (namespace AWS/FSx with FileSystemId).
+  ###########################
+  fsx_ids         = var.fsx_file_system_ids
+  fsx_gauge_metrics = flatten([
+    for fs_id in local.fsx_ids : [
+      [
+        "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", fs_id,
+        { stat: "Average", period: 60, label: "${fs_id}-StorageCapacityUtilization" }
+      ],
+      [
+        "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id,
+        { stat: "Average", period: 60, label: "${fs_id}-FileServerDiskThroughputUtilization" }
+      ]
+    ]
+  ])
+
+  ###########################
+  # Widgets (build as HCL objects, not strings)
+  ###########################
+  widgets = [
+    # EC2 gauge
+    {
+      type   = "metric"
+      x      = 0
+      y      = 0
+      width  = 24
+      height = 6
+      properties = {
+        metrics = local.ec2_all_metrics
+        view    = "gauge"
+        region  = var.region
+        period  = 300
+        stat    = "Average"
+        title   = "EC2-Health"
+        yAxis   = { left = { min = 0, max = 100 } }
+      }
+    },
+
+    # Lambda time series
+    {
+      type   = "metric"
+      x      = 0
+      y      = 7
+      width  = 24
+      height = 6
+      properties = {
+        metrics = local.lambda_all_metrics
+        view    = "timeSeries"
+        region  = var.region
+        period  = 300
+        title   = "Lambda-Health"
+      }
+    },
+
+    # SSM time series
+    {
+      type   = "metric"
+      x      = 0
+      y      = 21
+      width  = 24
+      height = 6
+      properties = {
+        metrics = local.ssm_metrics
+        view    = "timeSeries"
+        region  = var.region
+        period  = 60
+        title   = "SSM RunCommand Health"
+      }
+    },
+
+    # EFS gauge (single window)
+    {
+      type   = "metric"
+      x      = 0
+      y      = 35
+      width  = 24
+      height = 6
+      properties = {
+        region  = var.region
+        view    = "gauge"
+        title   = "EFS - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
+        period  = 60
+        stat    = "Average"
+        yAxis   = { left = { min = 0, max = 100 } }
+        metrics = local.efs_gauge_metrics
+      }
+    },
+
+    # FSx gauge (single window)
+    {
+      type   = "metric"
+      x      = 0
+      y      = 42
+      width  = 24
+      height = 6
+      properties = {
+        region  = var.region
+        view    = "gauge"
+        title   = "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
+        period  = 60
+        stat    = "Average"
+        yAxis   = { left = { min = 0, max = 100 } }
+        metrics = local.fsx_gauge_metrics
+      }
+    }
+  ]
+
+  #############################
+  # Final dashboard JSON
+  #############################
+  dashboard_body = jsonencode({
+    start          = "-PT24H"
+    periodOverride = "inherit"
+    widgets        = local.widgets
+  })
+}
+
+#############################
+# Resource
+#############################
+resource "aws_cloudwatch_dashboard" "infra_health" {
+  dashboard_name = "Infra-Health-Overview"
+  dashboard_body = local.dashboard_body
+}
