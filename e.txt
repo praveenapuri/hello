@@ -1,11 +1,27 @@
-data "external" "efs_list" {
-  program = [
-    "bash",
-    "-lc",
-    <<-EOT
-      set -euo pipefail
-      aws efs describe-file-systems --region ${var.region} --output json \
-      | jq -c '{ids: [.FileSystems[].FileSystemId]}'
-    EOT
-  ]
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.20"  # needs a recent v5.x
+    }
+  }
+}
+
+# Discover EFS file systems natively
+data "aws_efs_file_systems" "all" {}
+
+locals {
+  efs_ids         = data.aws_efs_file_systems.all.ids
+  efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
+
+  # Build gauge metrics (same as before)
+  efs_gauge_metrics = flatten([
+    for fs_id in local.efs_ids : [
+      [ "AWS/EFS", "MeteredIOBytes",     "FileSystemId", fs_id, { "stat":"Sum",     "period":60,  "id":"mi_${local.efs_id_to_token[fs_id]}" } ],
+      [ "AWS/EFS", "PermittedThroughput","FileSystemId", fs_id, { "stat":"Average", "period":60,  "id":"pt_${local.efs_id_to_token[fs_id]}" } ],
+      [ { "expression":"(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100", "id":"tp_${local.efs_id_to_token[fs_id]}", "label":"${fs_id}-FileServerDiskThroughputUtilization" } ],
+      [ "AWS/EFS", "StorageBytes",       "FileSystemId", fs_id, { "stat":"Average", "period":300, "id":"sb_${local.efs_id_to_token[fs_id]}" } ],
+      [ { "expression":"sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",   "id":"su_${local.efs_id_to_token[fs_id]}", "label":"${fs_id}-StorageCapacityUtilization" } ]
+    ]
+  ])
 }
