@@ -1,18 +1,38 @@
- Error: operation error CloudWatch:
-│
-│   with aws_cloudwatch_dashboard.infra_health,
-│   on main.tf line 144, in resource "aws_cloudwatch_dashboard" "infra_health":
-│  144: resource "aws_cloudwatch_dashboard" "infra_health" {
-│
-│ operation error CloudWatch: PutDashboard, https response error StatusCode:
-│ 400, RequestID: 852dac8e-b954-45a6-9da8-b27614ba49a6,
-│ InvalidParameterInput: The dashboard body is invalid, there are 1
-│ validation errors:
-│ [
-│   {
-│     "dataPath": "/widgets/0/properties",
-│     "message": "Should have required property 'yAxis'"
-│   }
-│ ] [smarterr summary template error: template "error_summary" not found]
-│ [smarterr detail template error: template "error_detail" not found]
-╵
+locals {
+  # ...everything above unchanged...
+
+  dashboard_body = <<-EOF
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0, "y": 0, "width": 24, "height": 6,
+      "properties": {
+        "metrics": ${local.ec2_metrics_json},
+        "view": "gauge",
+        "region": "${var.region}",
+        "stat": "Average",
+        "period": 300,
+        "yAxis": { "left": { "min": 0, "max": 100 } },
+        "title": "EC2-Health"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 7, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.lambda_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "Lambda-Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 21, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.ssm_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "SSM RunCommand Health" }
+    },
+    {
+      "type": "metric",
+      "x": 0, "y": 35, "width": 24, "height": 6,
+      "properties": { "metrics": ${local.efs_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "EFS-Health" }
+    }
+  ]
+}
+EOF
+}
