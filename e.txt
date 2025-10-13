@@ -1,3 +1,29 @@
-│   {
-│     "dataPath": "/widgets/4/properties/metrics/19",
-│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
+  # --- SSM Jobs (RunCommand) Metrics (NEW) ---
+  # String-only rows + trailing label objects (same style as your EC2/Lambda/EFS/FSx)
+  ssm_jobs_metrics = [
+    [ "AWS/SSM-RunCommand", "CommandsInProgress",        { "label": "SSM-CommandsInProgress" } ],
+    [ "AWS/SSM-RunCommand", "CommandsSucceeded",         { "label": "SSM-CommandsSucceeded" } ],
+    [ "AWS/SSM-RunCommand", "CommandsFailed",            { "label": "SSM-CommandsFailed" } ],
+    [ "AWS/SSM-RunCommand", "CommandsCancelled",         { "label": "SSM-CommandsCancelled" } ],
+    [ "AWS/SSM-RunCommand", "CommandsTimedOut",          { "label": "SSM-CommandsTimedOut" } ],
+    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut",  { "label": "SSM-CommandsDeliveryTimedOut" } ]
+  ]
+  ssm_jobs_metrics_string = jsonencode(local.ssm_jobs_metrics)
+
+
+    /* ---------- NEW: SSM Jobs (RunCommand) widget ---------- */
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 14,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.ssm_jobs_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "stat": "Sum",
+        "title": "SSM Jobs - RunCommand Status"
+      }
+    }
