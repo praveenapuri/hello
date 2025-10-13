@@ -1,145 +1,17 @@
-# main.tf
+region = "us-east-1"
 
-terraform {
-  backend "s3" {}
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 4.0"
-    }
-  }
-}
+efs_file_system_ids = [
+  "fs-0123456789abcdef0",
+  "fs-0abcdeffedcba9876"
+]
 
-############################################
-# Inputs
-############################################
-variable "region" {
-  type    = string
-  default = "us-east-1"
-}
+# EFS storage % will be computed against this “planning capacity”
+efs_target_capacity_bytes = 21990232555520 # 20 TiB
 
-# List your **EFS** FileSystemIds here
-variable "efs_file_system_ids" {
-  description = "EFS FileSystemIds to chart (e.g., [\"fs-0123...\",\"fs-0456...\"])"
-  type        = list(string)
-  default     = []
-}
+# FSx Windows File Server IDs
+fsx_file_system_ids = [
+  "fs-0123abcd0123abcd0",
+  "fs-0456efgh0456efgh0"
+]
 
-# EFS is elastic; pick a planning capacity to compute Storage % (e.g., 10 TiB)
-variable "efs_target_capacity_bytes" {
-  description = "Target capacity (bytes) to compute EFS storage utilization %."
-  type        = number
-  default     = 10995116277760
-}
-
-# List your **FSx** FileSystemIds here (FSx for Windows File Server)
-variable "fsx_file_system_ids" {
-  description = "FSx FileSystemIds to chart (e.g., [\"fs-0abc...\",\"fs-0123...\"])"
-  type        = list(string)
-  default     = []
-}
-
-# Whatever you already have
-variable "lambda_function_names" {
-  type    = list(string)
-  default = []
-}
-
-provider "aws" {
-  region = var.region
-}
-
-############################################
-# EC2 discovery (unchanged)
-############################################
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
-}
-
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
-
-############################################
-# Locals
-############################################
-locals {
-  # ------------------- EC2 metrics -------------------
-  ec2_instances = values(data.aws_instance.instance_details)
-
-  cpu_metrics = [
-    for inst in local.ec2_instances : [
-      "AWS/EC2", "CPUUtilization", "InstanceId", inst.id,
-      { "label" : "CPU - ${coalesce(inst.tags.Name, inst.id)}" }
-    ]
-  ]
-  mem_metrics = [
-    for inst in local.ec2_instances : [
-      "CWAgent", "mem_used_percent", "InstanceId", inst.id,
-      { "label" : "%MEM - ${coalesce(inst.tags.Name, inst.id)}" }
-    ]
-  ]
-  disk_metrics = [
-    for inst in local.ec2_instances : [
-      "CWAgent", "disk_used_percent", "InstanceId", inst.id,
-      { "label": "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
-    ]
-  ]
-  ec2_all_metrics  = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
-  ec2_metrics_json = jsonencode(local.ec2_all_metrics)
-
-  # ------------------- Lambda metrics -------------------
-  lambda_invocations = [
-    for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Invocations", "FunctionName", fn, { "label": "Invocations - ${fn}" }
-    ]
-  ]
-  lambda_errors = [
-    for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Errors", "FunctionName", fn, { "label": "Errors - ${fn}" }
-    ]
-  ]
-  lambda_duration = [
-    for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Duration", "FunctionName", fn, { "label": "Duration - ${fn}" }
-    ]
-  ]
-  lambda_throttles = [
-    for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Throttles", "FunctionName", fn, { "label": "Throttles - ${fn}" }
-    ]
-  ]
-  lambda_concurrent = [
-    for fn in var.lambda_function_names : [
-      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn, { "label": "Concurrent - ${fn}" }
-    ]
-  ]
-  lambda_all_metrics  = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
-  lambda_metrics_json = jsonencode(local.lambda_all_metrics)
-
-  # ------------------- SSM Run Command -------------------
-  ssm_metrics = [
-    [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { "label": "SSM Commands Succeeded" } ],
-    [ "AWS/SSM-RunCommand", "CommandsFailed",           { "label": "SSM Commands Failed" } ],
-    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { "label": "SSM Commands DeliveryTimedOut" } ]
-  ]
-  ssm_metrics_json = jsonencode(local.ssm_metrics)
-
-  # ------------------- EFS gauge metrics (from variable) -------------------
-  efs_ids         = var.efs_file_system_ids
-  efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
-
-  # Per EFS:
-  #  - MeteredIOBytes (Sum, 60s) -> mi_<token>
-  #  - PermittedThroughput (Avg, 60s) -> pt_<token>
-  #  - (mi/60)/pt*100 -> tp_<token> labeled "<fs>-FileServerDiskThroughputUtilization"
-  #  - StorageBytes (Avg, 300s) -> sb_<token>
-  #  - sb/target*100 -> su_<token> labeled "<fs>-StorageCapacityUtilization"
-  efs_gauge_metrics = flatten([
-    for fs_id in local.efs_ids : [
-      [
-        "AWS/EFS", "M
+lambda_function_names = ["my-fn-a", "my-fn-b"]
