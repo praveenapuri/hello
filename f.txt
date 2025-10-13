@@ -20,13 +20,6 @@ data "aws_instance" "instance_details" {
 }
 
 # -----------------------
-# EFS discovery (NEW)
-# -----------------------
-# Requires AWS provider v5.20+.
-# Dynamically lists all EFS file systems in this region.
-data "aws_efs_file_systems" "all" {}
-
-# -----------------------
 # Locals
 # -----------------------
 locals {
@@ -52,8 +45,8 @@ locals {
       { "label": "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
     ]
   ]
-  ec2_all_metrics   = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
-  ec2_metrics_json  = jsonencode(local.ec2_all_metrics)
+  ec2_all_metrics  = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
+  ec2_metrics_json = jsonencode(local.ec2_all_metrics)
 
   # -------------------
   # Lambda metrics
@@ -95,23 +88,38 @@ locals {
   ssm_metrics_json = jsonencode(local.ssm_metrics)
 
   # -------------------
-  # EFS metrics (UPDATED to use dynamic IDs)
-  efs_ids = data.aws_efs_file_systems.all.ids
-
-  efs_burst = [
-    for id in local.efs_ids : [ "AWS/EFS", "BurstCreditBalance", "FileSystemId", id, { "label": "EFS-Burst - ${id}" } ]
-  ]
-  efs_percent_io = [
-    for id in local.efs_ids : [ "AWS/EFS", "PercentIOLimit", "FileSystemId", id, { "label": "EFS-PercentIO - ${id}" } ]
-  ]
-  efs_client_conn = [
-    for id in local.efs_ids : [ "AWS/EFS", "ClientConnections", "FileSystemId", id, { "label": "EFS-Clients - ${id}" } ]
-  ]
-  efs_storage = [
-    for id in local.efs_ids : [ "AWS/EFS", "StorageBytes", "FileSystemId", id, { "label": "EFS-Storage - ${id}" } ]
-  ]
-  efs_all_metrics  = concat(local.efs_burst, local.efs_percent_io, local.efs_client_conn, local.efs_storage)
-  efs_metrics_json = jsonencode(local.efs_all_metrics)
+  # EFS metrics (NO IDs — use SEARCH() expressions)
+  # Each item below is a metric "row" containing an expression object.
+  efs_metrics_json = jsonencode([
+    [
+      {
+        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"TotalIOBytes\"', 'Sum', 300)",
+        "label": "EFS TotalIOBytes",
+        "id": "efs_total_io"
+      }
+    ],
+    [
+      {
+        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"ClientConnections\"', 'Average', 300)",
+        "label": "EFS ClientConnections",
+        "id": "efs_clients"
+      }
+    ],
+    [
+      {
+        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"PercentIOLimit\"', 'Average', 300)",
+        "label": "EFS PercentIOLimit",
+        "id": "efs_pct_io"
+      }
+    ],
+    [
+      {
+        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"BurstCreditBalance\"', 'Average', 300)",
+        "label": "EFS BurstCreditBalance",
+        "id": "efs_burst"
+      }
+    ]
+  ])
 
   # -------------------
   # Dashboard JSON
@@ -127,23 +135,41 @@ locals {
         "region": "${var.region}",
         "period": 300,
         "title": "EC2-Health",
-        "yAxis": { "left": { "min": 0, "max": 100 } }   // added to satisfy gauge requirement
+        "yAxis": { "left": { "min": 0, "max": 100 } }   // required for gauge view
       }
     },
     {
       "type": "metric",
       "x": 0, "y": 7, "width": 24, "height": 6,
-      "properties": { "metrics": ${local.lambda_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "Lambda-Health" }
+      "properties": {
+        "metrics": ${local.lambda_metrics_json},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 300,
+        "title": "Lambda-Health"
+      }
     },
     {
       "type": "metric",
       "x": 0, "y": 21, "width": 24, "height": 6,
-      "properties": { "metrics": ${local.ssm_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 60, "title": "SSM RunCommand Health" }
+      "properties": {
+        "metrics": ${local.ssm_metrics_json},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "title": "SSM RunCommand Health"
+      }
     },
     {
       "type": "metric",
       "x": 0, "y": 35, "width": 24, "height": 6,
-      "properties": { "metrics": ${local.efs_metrics_json}, "view": "timeSeries", "region": "${var.region}", "period": 300, "title": "EFS-Health" }
+      "properties": {
+        "metrics": ${local.efs_metrics_json},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 300,
+        "title": "EFS - IO, Clients, %IO limit & Burst (all filesystems)"
+      }
     }
   ]
 }
