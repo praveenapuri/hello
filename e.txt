@@ -1,1 +1,11 @@
-Error in expression efs_tp_util [Unsupported operand type(s) for /: '[Array[TimeSeries], Array[TimeSeries]]']
+data "external" "efs_list" {
+  program = [
+    "bash",
+    "-lc",
+    <<-EOT
+      set -euo pipefail
+      aws efs describe-file-systems --region ${var.region} --output json \
+      | jq -c '{ids: [.FileSystems[].FileSystemId]}'
+    EOT
+  ]
+}
