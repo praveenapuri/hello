@@ -1,57 +1,39 @@
-# main.tf
-
 terraform {
   backend "s3" {}
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 4.0"
-    }
-  }
 }
 
-############################################
+########################################
 # Inputs
-############################################
-variable "region" {
-  type    = string
-  default = "us-east-1"
-}
+########################################
+# region is referenced below; if not defined elsewhere, uncomment:
+# variable "region" {
+#   type    = string
+#   default = "us-east-1"
+# }
 
-# List your **EFS** FileSystemIds here
-variable "efs_file_system_ids" {
-  description = "EFS FileSystemIds to chart (e.g., [\"fs-0123...\",\"fs-0456...\"])"
-  type        = list(string)
-  default     = []
-}
-
-# EFS is elastic; pick a planning capacity to compute Storage % (e.g., 10 TiB)
-variable "efs_target_capacity_bytes" {
-  description = "Target capacity (bytes) to compute EFS storage utilization %."
-  type        = number
-  default     = 10995116277760
-}
-
-# List your **FSx** FileSystemIds here (FSx for Windows File Server)
-variable "fsx_file_system_ids" {
-  description = "FSx FileSystemIds to chart (e.g., [\"fs-0abc...\",\"fs-0123...\"])"
-  type        = list(string)
-  default     = []
-}
-
-# Whatever you already have
 variable "lambda_function_names" {
-  type    = list(string)
-  default = []
+  description = "Lambda function names to chart"
+  type        = list(string)
+  default     = []
 }
 
-provider "aws" {
-  region = var.region
+variable "efs_file_system_ids" {
+  description = "EFS FileSystemIds (e.g., [\"fs-0123...\",\"fs-0456...\"])"
+  type        = list(string)
+  default     = []
 }
 
-############################################
-# EC2 discovery (unchanged)
-############################################
+variable "fsx_file_system_ids" {
+  description = "FSx (Windows File Server) FileSystemIds (e.g., [\"fs-0abc...\",\"fs-0123...\"])"
+  type        = list(string)
+  default     = []
+}
+
+# Optional: if you want to change periods/stat at widget level, keep defaults below.
+
+# -----------------------
+# EC2 instances discovery
+# -----------------------
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
@@ -64,11 +46,12 @@ data "aws_instance" "instance_details" {
   instance_id = each.key
 }
 
-############################################
+# -----------------------
 # Locals
-############################################
+# -----------------------
 locals {
-  # ------------------- EC2 metrics -------------------
+  # -------------------
+  # EC2 metrics
   ec2_instances = values(data.aws_instance.instance_details)
 
   cpu_metrics = [
@@ -92,7 +75,8 @@ locals {
   ec2_all_metrics  = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
   ec2_metrics_json = jsonencode(local.ec2_all_metrics)
 
-  # ------------------- Lambda metrics -------------------
+  # -------------------
+  # Lambda metrics
   lambda_invocations = [
     for fn in var.lambda_function_names : [
       "AWS/Lambda", "Invocations", "FunctionName", fn, { "label": "Invocations - ${fn}" }
@@ -121,7 +105,8 @@ locals {
   lambda_all_metrics  = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
   lambda_metrics_json = jsonencode(local.lambda_all_metrics)
 
-  # ------------------- SSM Run Command -------------------
+  # -------------------
+  # SSM Run Command metrics
   ssm_metrics = [
     [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { "label": "SSM Commands Succeeded" } ],
     [ "AWS/SSM-RunCommand", "CommandsFailed",           { "label": "SSM Commands Failed" } ],
@@ -129,71 +114,35 @@ locals {
   ]
   ssm_metrics_json = jsonencode(local.ssm_metrics)
 
-  # ------------------- EFS gauge metrics (from variable) -------------------
-  efs_ids         = var.efs_file_system_ids
-  efs_id_to_token = { for id in local.efs_ids : id => replace(id, "-", "") }
+  # -------------------
+  # EFS metrics (per FileSystemId)
+  # Note: EFS has no native StorageCapacityUtilization or FileServerDiskThroughputUtilization metrics.
+  # We chart PercentIOLimit (pressure/throughput headroom) and StorageBytes (raw capacity).
+  efs_percent_io = [
+    for id in var.efs_file_system_ids : [ "AWS/EFS", "PercentIOLimit", "FileSystemId", id, { "label": "EFS-PercentIOLimit - ${id}" } ]
+  ]
+  efs_storage = [
+    for id in var.efs_file_system_ids : [ "AWS/EFS", "StorageBytes", "FileSystemId", id, { "label": "EFS-StorageBytes - ${id}" } ]
+  ]
+  efs_all_metrics  = concat(local.efs_percent_io, local.efs_storage)
+  efs_metrics_json = jsonencode(local.efs_all_metrics)
 
-  # Per EFS:
-  #  - MeteredIOBytes (Sum, 60s) -> mi_<token>
-  #  - PermittedThroughput (Avg, 60s) -> pt_<token>
-  #  - (mi/60)/pt*100 -> tp_<token> labeled "<fs>-FileServerDiskThroughputUtilization"
-  #  - StorageBytes (Avg, 300s) -> sb_<token>
-  #  - sb/target*100 -> su_<token> labeled "<fs>-StorageCapacityUtilization"
-  efs_gauge_metrics = flatten([
-    for fs_id in local.efs_ids : [
-      [
-        "AWS/EFS", "MeteredIOBytes", "FileSystemId", fs_id,
-        { "stat": "Sum", "period": 60, "id": "mi_${local.efs_id_to_token[fs_id]}" }
-      ],
-      [
-        "AWS/EFS", "PermittedThroughput", "FileSystemId", fs_id,
-        { "stat": "Average", "period": 60, "id": "pt_${local.efs_id_to_token[fs_id]}" }
-      ],
-      [
-        { "expression": "(mi_${local.efs_id_to_token[fs_id]}/60)/pt_${local.efs_id_to_token[fs_id]}*100",
-          "id": "tp_${local.efs_id_to_token[fs_id]}",
-          "label": "${fs_id}-FileServerDiskThroughputUtilization"
-        }
-      ],
-      [
-        "AWS/EFS", "StorageBytes", "FileSystemId", fs_id,
-        { "stat": "Average", "period": 300, "id": "sb_${local.efs_id_to_token[fs_id]}" }
-      ],
-      [
-        { "expression": "sb_${local.efs_id_to_token[fs_id]} / ${var.efs_target_capacity_bytes} * 100",
-          "id": "su_${local.efs_id_to_token[fs_id]}",
-          "label": "${fs_id}-StorageCapacityUtilization"
-        }
-      ]
-    ]
-  ])
+  # -------------------
+  # FSx (Windows File Server) metrics (per FileSystemId)
+  # These are native % metrics that match your ask.
+  fsx_storage_util = [
+    for id in var.fsx_file_system_ids : [ "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", id, { "label": "FSx-StorageCapacityUtilization - ${id}" } ]
+  ]
+  fsx_disk_tp_util = [
+    for id in var.fsx_file_system_ids : [ "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", id, { "label": "FSx-FileServerDiskThroughputUtilization - ${id}" } ]
+  ]
+  fsx_all_metrics  = concat(local.fsx_storage_util, local.fsx_disk_tp_util)
+  fsx_metrics_json = jsonencode(local.fsx_all_metrics)
 
-  # ------------------- FSx gauge metrics (from variable) -------------------
-  # For FSx **Windows File Server** (namespace AWS/FSx, dimension FileSystemId)
-  fsx_ids         = var.fsx_file_system_ids
-  fsx_id_to_token = { for id in local.fsx_ids : id => replace(id, "-", "") }
-
-  # Per FSx FS:
-  #  - StorageCapacityUtilization (Avg, 60s) -> fsc_<token>
-  #  - FileServerDiskThroughputUtilization (Avg, 60s) -> fst_<token>
-  fsx_gauge_metrics = flatten([
-    for fs_id in local.fsx_ids : [
-      [
-        "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", fs_id,
-        { "stat": "Average", "period": 60, "id": "fsc_${local.fsx_id_to_token[fs_id]}", "label": "${fs_id}-StorageCapacityUtilization" }
-      ],
-      [
-        "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id,
-        { "stat": "Average", "period": 60, "id": "fst_${local.fsx_id_to_token[fs_id]}", "label": "${fs_id}-FileServerDiskThroughputUtilization" }
-      ]
-    ]
-  ])
-
-  # ------------------- Dashboard JSON -------------------
+  # -------------------
+  # Dashboard JSON
   dashboard_body = <<-EOF
 {
-  "start": "-PT24H",
-  "periodOverride": "inherit",
   "widgets": [
     {
       "type": "metric",
@@ -203,7 +152,6 @@ locals {
         "view": "gauge",
         "region": "${var.region}",
         "period": 300,
-        "stat": "Average",
         "title": "EC2-Health",
         "yAxis": { "left": { "min": 0, "max": 100 } }
       }
@@ -230,34 +178,26 @@ locals {
         "title": "SSM RunCommand Health"
       }
     },
-
-    # ---------------- EFS gauge (single window) ----------------
     {
       "type": "metric",
       "x": 0, "y": 35, "width": 24, "height": 6,
       "properties": {
+        "metrics": ${local.efs_metrics_json},
+        "view": "timeSeries",
         "region": "${var.region}",
-        "view": "gauge",
-        "title": "EFS - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)",
-        "period": 60,
-        "stat": "Average",
-        "yAxis": { "left": { "min": 0, "max": 100 } },
-        "metrics": ${jsonencode(local.efs_gauge_metrics)}
+        "period": 300,
+        "title": "EFS - PercentIOLimit & StorageBytes"
       }
     },
-
-    # ---------------- FSx gauge (single window) ----------------
     {
       "type": "metric",
       "x": 0, "y": 42, "width": 24, "height": 6,
       "properties": {
+        "metrics": ${local.fsx_metrics_json},
+        "view": "timeSeries",
         "region": "${var.region}",
-        "view": "gauge",
-        "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)",
         "period": 60,
-        "stat": "Average",
-        "yAxis": { "left": { "min": 0, "max": 100 } },
-        "metrics": ${jsonencode(local.fsx_gauge_metrics)}
+        "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
       }
     }
   ]
@@ -265,6 +205,9 @@ locals {
 EOF
 }
 
+# -----------------------
+# Dashboard resource
+# -----------------------
 resource "aws_cloudwatch_dashboard" "infra_health" {
   dashboard_name = "Infra-Health-Overview"
   dashboard_body = local.dashboard_body
