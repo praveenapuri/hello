@@ -1,17 +1,3 @@
-region = "us-east-1"
-
-efs_file_system_ids = [
-  "fs-0123456789abcdef0",
-  "fs-0abcdeffedcba9876"
-]
-
-# EFS storage % will be computed against this “planning capacity”
-efs_target_capacity_bytes = 21990232555520 # 20 TiB
-
-# FSx Windows File Server IDs
-fsx_file_system_ids = [
-  "fs-0123abcd0123abcd0",
-  "fs-0456efgh0456efgh0"
-]
-
-lambda_function_names = ["my-fn-a", "my-fn-b"]
+│   {
+│     "dataPath": "/widgets/4/properties/metrics/19",
+│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
