@@ -1,8 +1,1 @@
-ou can't reliably create a single multi-metric gauge widget with a dynamic list of EC2 instances using Terraform. The persistent error you're encountering is due to a strict and specific limitation in the CloudWatch API, not an error in the Terraform code itself.
-
-The gauge widget's API is not designed to handle a large, dynamically generated list of metrics in the way that Terraform constructs it, leading to the validation error.
-
-The Core Problem: A CloudWatch API Limitation
-The error message "Field 'metrics' has to be an array of array of strings..." is the key. While a gauge widget can display a few manually added metrics, its underlying API schema is too simple for the complex, nested list of metrics that Terraform generates when it discovers a large number of instances. The API validation fails because it cannot process this dynamic structure for this specific widget type.
-
-This is a limitation of the CloudWatch service itself, and no amount of restructuring the Terraform code for a single multi-metric gauge will resolve it.
+Error in expression efs_tp_util [Unsupported operand type(s) for /: '[Array[TimeSeries], Array[TimeSeries]]']
