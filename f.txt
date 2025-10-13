@@ -1,7 +1,11 @@
-program = [
-  "cmd.exe","/C",
-  "powershell -NoProfile -Command \"$ids = aws ec2 describe-volumes --region ${var.region} --query 'Volumes[].VolumeId' --output text; $csv = ($ids -split '\\s+') -join ','; Write-Output ('{\\\"ids_csv\\\":\\\"' + $csv + '\\\"}')\""
-]
+data "external" "ebs_volumes" {
+  program = [
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    "$ErrorActionPreference='Stop'; $ids = aws ec2 describe-volumes --region ${var.region} --query \"Volumes[].VolumeId\" --output text; $csv = ($ids -split '\\s+') -join ','; if (-not $csv) { $csv = '' }; Write-Output ('{\"ids_csv\":\"' + $csv + '\"}')"
+  ]
+}
 
 
 locals {
