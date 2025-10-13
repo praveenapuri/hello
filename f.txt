@@ -1,12 +1,22 @@
-# main.tf
-
 terraform {
   backend "s3" {}
 }
 
-# -----------------------
-# EC2 instances discovery
-# -----------------------
+# ---------------------------------
+# (Your provider/inputs)
+# ---------------------------------
+variable "region" {
+  type    = string
+  default = "us-east-1"
+}
+
+provider "aws" {
+  region = var.region
+}
+
+# ---------------------------------
+# EC2 discovery (as in your file)
+# ---------------------------------
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
@@ -19,12 +29,19 @@ data "aws_instance" "instance_details" {
   instance_id = each.key
 }
 
-# -----------------------
-# Locals
-# -----------------------
+# ---------------------------------
+# Variables for Lambda (as in your file)
+# ---------------------------------
+variable "lambda_function_names" {
+  type    = list(string)
+  default = []
+}
+
+# ---------------------------------
+# Locals build the metrics arrays
+# ---------------------------------
 locals {
-  # -------------------
-  # EC2 metrics
+  # ---------- EC2 ----------
   ec2_instances = values(data.aws_instance.instance_details)
 
   cpu_metrics = [
@@ -42,14 +59,14 @@ locals {
   disk_metrics = [
     for inst in local.ec2_instances : [
       "CWAgent", "disk_used_percent", "InstanceId", inst.id,
-      { "label": "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
+      { "label" : "%Disk - ${coalesce(inst.tags.Name, inst.id)}" }
     ]
   ]
+
   ec2_all_metrics  = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
   ec2_metrics_json = jsonencode(local.ec2_all_metrics)
 
-  # -------------------
-  # Lambda metrics
+  # ---------- Lambda ----------
   lambda_invocations = [
     for fn in var.lambda_function_names : [
       "AWS/Lambda", "Invocations", "FunctionName", fn, { "label": "Invocations - ${fn}" }
@@ -78,8 +95,7 @@ locals {
   lambda_all_metrics  = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
   lambda_metrics_json = jsonencode(local.lambda_all_metrics)
 
-  # -------------------
-  # SSM Run Command metrics
+  # ---------- SSM RunCommand ----------
   ssm_metrics = [
     [ "AWS/SSM-RunCommand", "CommandsSucceeded",        { "label": "SSM Commands Succeeded" } ],
     [ "AWS/SSM-RunCommand", "CommandsFailed",           { "label": "SSM Commands Failed" } ],
@@ -87,44 +103,30 @@ locals {
   ]
   ssm_metrics_json = jsonencode(local.ssm_metrics)
 
-  # -------------------
-  # EFS metrics (NO IDs — use SEARCH() expressions)
-  # Each item below is a metric "row" containing an expression object.
+  # ---------- EFS (NO IDs) ----------
+  # Use SEARCH() to retrieve all matching metrics for every filesystem.
+  # We also set widget-level "stat" and use 60s periods.
   efs_metrics_json = jsonencode([
     [
-      {
-        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"TotalIOBytes\"', 'Sum', 300)",
-        "label": "EFS TotalIOBytes",
-        "id": "efs_total_io"
-      }
+      { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"TotalIOBytes\"', 'Sum', 60)",     "label": "EFS TotalIOBytes",      "id": "efs_total_io" }
     ],
     [
-      {
-        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"ClientConnections\"', 'Average', 300)",
-        "label": "EFS ClientConnections",
-        "id": "efs_clients"
-      }
+      { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"ClientConnections\"', 'Average', 60)", "label": "EFS ClientConnections", "id": "efs_clients" }
     ],
     [
-      {
-        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"PercentIOLimit\"', 'Average', 300)",
-        "label": "EFS PercentIOLimit",
-        "id": "efs_pct_io"
-      }
+      { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"PercentIOLimit\"', 'Average', 60)",    "label": "EFS PercentIOLimit",   "id": "efs_pct_io" }
     ],
     [
-      {
-        "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"BurstCreditBalance\"', 'Average', 300)",
-        "label": "EFS BurstCreditBalance",
-        "id": "efs_burst"
-      }
+      { "expression": "SEARCH('{AWS/EFS,FileSystemId} MetricName=\"BurstCreditBalance\"', 'Average', 60)", "label": "EFS BurstCreditBalance","id": "efs_burst" }
     ]
   ])
 
-  # -------------------
-  # Dashboard JSON
+  # ---------- Dashboard JSON ----------
+  # We explicitly set start window to last 24h to help ensure data appears.
   dashboard_body = <<-EOF
 {
+  "start": "-PT24H",
+  "periodOverride": "inherit",
   "widgets": [
     {
       "type": "metric",
@@ -133,9 +135,10 @@ locals {
         "metrics": ${local.ec2_metrics_json},
         "view": "gauge",
         "region": "${var.region}",
-        "period": 300,
-        "title": "EC2-Health",
-        "yAxis": { "left": { "min": 0, "max": 100 } }   // required for gauge view
+        "period": 60,
+        "stat": "Average",
+        "title": "EC2 - CPU/Mem/Disk (Gauge)",
+        "yAxis": { "left": { "min": 0, "max": 100 } }
       }
     },
     {
@@ -145,8 +148,9 @@ locals {
         "metrics": ${local.lambda_metrics_json},
         "view": "timeSeries",
         "region": "${var.region}",
-        "period": 300,
-        "title": "Lambda-Health"
+        "period": 60,
+        "stat": "Sum",
+        "title": "Lambda - Invocations/Errors/Throttles/Duration/Concurrent"
       }
     },
     {
@@ -157,7 +161,8 @@ locals {
         "view": "timeSeries",
         "region": "${var.region}",
         "period": 60,
-        "title": "SSM RunCommand Health"
+        "stat": "Sum",
+        "title": "SSM RunCommand - Status"
       }
     },
     {
@@ -167,8 +172,10 @@ locals {
         "metrics": ${local.efs_metrics_json},
         "view": "timeSeries",
         "region": "${var.region}",
-        "period": 300,
-        "title": "EFS - IO, Clients, %IO limit & Burst (all filesystems)"
+        "period": 60,
+        "stat": "Average",
+        "setPeriodToTimeRange": false,
+        "title": "EFS - TotalIOBytes / ClientConnections / %IOLimit / Burst (all filesystems)"
       }
     }
   ]
@@ -176,9 +183,6 @@ locals {
 EOF
 }
 
-# -----------------------
-# Dashboard resource
-# -----------------------
 resource "aws_cloudwatch_dashboard" "infra_health" {
   dashboard_name = "Infra-Health-Overview"
   dashboard_body = local.dashboard_body
