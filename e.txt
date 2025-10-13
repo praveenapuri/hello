@@ -1,17 +1,5 @@
-# Windows-friendly dynamic discovery (no bash/jq required)
-data "external" "ebs_volumes" {
-  program = [
-    "powershell",
-    "-NoProfile",
-    "-Command",
-    @"
-$resp = aws ec2 describe-volumes --region ${var.region} --output json | ConvertFrom-Json
-$vols = @()
-if ($resp -and $resp.Volumes) { $vols = $resp.Volumes | ForEach-Object { $_.VolumeId } }
-@{ ids = $vols } | ConvertTo-Json -Compress
-"@
-  ]
-}
+program = ["cmd.exe","/C","powershell -NoProfile -Command aws ec2 describe-volumes --region ${var.region} --output json --query '{ids: Volumes[].VolumeId}'"]
+
 
 locals {
   # Clean list of discovered volume IDs
