@@ -1,62 +1,79 @@
-# EBS volume IDs to chart
-variable "ebs_volume_ids" {
-  description = "List of EBS VolumeIds (e.g., [\"vol-0123...\"])"
-  type        = list(string)
-  default     = []
+# Windows-friendly dynamic discovery (no bash/jq required)
+data "external" "ebs_volumes" {
+  program = [
+    "powershell",
+    "-NoProfile",
+    "-Command",
+    @"
+$resp = aws ec2 describe-volumes --region ${var.region} --output json | ConvertFrom-Json
+$vols = @()
+if ($resp -and $resp.Volumes) { $vols = $resp.Volumes | ForEach-Object { $_.VolumeId } }
+@{ ids = $vols } | ConvertTo-Json -Compress
+"@
+  ]
 }
 
-
 locals {
-  # Clean/trim to ensure plain strings only
-  ebs_ids_clean = [
-    for id in var.ebs_volume_ids : tostring(trimspace(id))
+  # Clean list of discovered volume IDs
+  ebs_volume_ids = try(data.external.ebs_volumes.result.ids, [])
+  ebs_ids_clean  = [
+    for id in local.ebs_volume_ids : trimspace(id)
     if length(trimspace(id)) > 0
   ]
+  # Token for metric-math ids (no dashes)
+  ebs_id_token = { for id in local.ebs_ids_clean : id => replace(id, "-", "") }
 
-  # EBS time-series metrics (strings-only rows)
-  # - BurstBalance (%) — good for burstable volumes
-  # - VolumeQueueLength — depth indicator
-  # - VolumeReadOps / VolumeWriteOps — IO rate
-  ebs_metrics = flatten([
+  # For each volume:
+  #   rt_<t> = Sum(VolumeTotalReadTime)   (hidden)
+  #   ro_<t> = Sum(VolumeReadOps)         (hidden)
+  #   tp_<t> = Avg(VolumeThroughputPercentage) (hidden)
+  #   rl_<t> = rt/ro                       => Avg Read Latency (seconds)
+  #   te_<t> = tp>100                      => ThroughputExceededCheck (1/0)
+  ebs_latency_tp_metrics = flatten([
     for vol in local.ebs_ids_clean : [
-      [ "AWS/EBS", "BurstBalance",       "VolumeId", vol ],
-      [ "AWS/EBS", "VolumeQueueLength",  "VolumeId", vol ],
-      [ "AWS/EBS", "VolumeReadOps",      "VolumeId", vol ],
-      [ "AWS/EBS", "VolumeWriteOps",     "VolumeId", vol ]
+      [
+        "AWS/EBS", "VolumeTotalReadTime", "VolumeId", vol,
+        { id = "rt_${local.ebs_id_token[vol]}", stat = "Sum", period = 300, visible = false }
+      ],
+      [
+        "AWS/EBS", "VolumeReadOps", "VolumeId", vol,
+        { id = "ro_${local.ebs_id_token[vol]}", stat = "Sum", period = 300, visible = false }
+      ],
+      [
+        "AWS/EBS", "VolumeThroughputPercentage", "VolumeId", vol,
+        { id = "tp_${local.ebs_id_token[vol]}", stat = "Average", period = 300, visible = false }
+      ],
+      [
+        { expression = "rt_${local.ebs_id_token[vol]}/ro_${local.ebs_id_token[vol]}",
+          id         = "rl_${local.ebs_id_token[vol]}",
+          label      = "${vol} - VolumeAvgReadLatency (s)"
+        }
+      ],
+      [
+        { expression = "tp_${local.ebs_id_token[vol]}>100",
+          id         = "te_${local.ebs_id_token[vol]}",
+          label      = "${vol} - VolumeThroughputExceededCheck"
+        }
+      ]
     ]
   ])
 
-  # EBS widget (timeSeries to accommodate mixed units)
-  ebs_widget = {
+  # The EBS widget (timeSeries so expressions are valid)
+  ebs_latency_tp_widget = {
     type   = "metric"
-    x      = 0
-    y      = 35    # adjust if this collides with your layout
+    x      = 0           # adjust x/y as you like
+    y      = 35
     width  = 24
     height = 6
     properties = {
       region  = var.region
       view    = "timeSeries"
-      title   = "EBS - BurstBalance, QueueLength, ReadOps, WriteOps"
+      title   = "EBS - Avg Read Latency (s) & Throughput Exceeded Check"
       period  = 300
       stat    = "Average"
-      metrics = local.ebs_metrics
+      metrics = local.ebs_latency_tp_metrics
     }
   }
 }
 
 
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 35,
-      "width": 24,
-      "height": 6,
-      "properties": {
-        "metrics": ${jsonencode(local.ebs_metrics)},
-        "view": "timeSeries",
-        "region": "${var.region}",
-        "period": 300,
-        "stat": "Average",
-        "title": "EBS - BurstBalance, QueueLength, ReadOps, WriteOps"
-      }
-    }
