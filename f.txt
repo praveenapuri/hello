@@ -1,218 +1,94 @@
-#############################
-# main.tf  (pure string rows everywhere)
-#############################
-
-terraform {
-  backend "s3" {}
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 4.0"
-    }
-  }
-}
-
-variable "region" {
-  type    = string
-  default = "us-east-1"
-}
-
-# Optional: if you don’t use the Lambda/SSM widgets, you can remove them.
-variable "lambda_function_names" {
-  type    = list(string)
-  default = []
-}
-
-# === Your ID lists (strings only) ===
-variable "efs_file_system_ids" {
-  description = "EFS FileSystemIds (e.g. [\"fs-0123...\"])"
-  type        = list(string)
-  default     = []
-}
-
-variable "fsx_file_system_ids" {
-  description = "FSx for Windows FileSystemIds (e.g. [\"fs-0abc...\"])"
-  type        = list(string)
-  default     = []
-}
-
-provider "aws" {
-  region = var.region
-}
-
-# ---------------- EC2 discovery (for EC2 widget) ----------------
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
-}
-
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
+# Variables expected:
+# variable "region" { type = string }
+# variable "efs_file_system_ids" { type = list(string) }
+# variable "fsx_file_system_ids" { type = list(string) }
 
 locals {
-  ################################################################
-  # EC2 gauge (ROWS = strings only, identical shape we’ll use below)
-  ################################################################
-  ec2_instances = values(data.aws_instance.instance_details)
-
-  ec2_metrics = [
-    for inst in local.ec2_instances : [
-      "AWS/EC2", "CPUUtilization", "InstanceId", tostring(inst.id)
-    ]
-  ]
-
-  ################################################################
-  # EFS gauge — EXACT SAME SHAPE as EC2:
-  #   ["AWS/EFS","PercentIOLimit","FileSystemId","<fs-id>"]
-  ################################################################
+  # --- Clean ID lists (strings only; trim empties) ---
   efs_ids_clean = [
-    for id in var.efs_file_system_ids : tostring(trimspace(id))
+    for id in var.efs_file_system_ids : trimspace(id)
     if length(trimspace(id)) > 0
   ]
 
+  fsx_ids_clean = [
+    for id in var.fsx_file_system_ids : trimspace(id)
+    if length(trimspace(id)) > 0
+  ]
+
+  # --- EFS GAUGE (rows = strings only + trailing renderer object) ---
+  # Use a native % metric that works in gauge: PercentIOLimit
   efs_metrics = [
     for fs_id in local.efs_ids_clean : [
-      "AWS/EFS", "PercentIOLimit", "FileSystemId", fs_id
+      "AWS/EFS", "PercentIOLimit", "FileSystemId", fs_id,
+      { stat = "Average", period = 60 }
     ]
   ]
 
-  ################################################################
-  # FSx gauge — EXACT SAME SHAPE as EC2 (two rows per FSx id):
-  #   ["AWS/FSx","StorageCapacityUtilization","FileSystemId","<fsx-id>"]
-  #   ["AWS/FSx","FileServerDiskThroughputUtilization","FileSystemId","<fsx-id>"]
-  ################################################################
-  fsx_ids_clean = [
-    for id in var.fsx_file_system_ids : tostring(trimspace(id))
-    if length(trimspace(id)) > 0
-  ]
-
+  # --- FSx GAUGE (Windows FS) ---
+  # Two native % metrics per filesystem; each row ends with renderer object
   fsx_metrics = flatten([
     for fs_id in local.fsx_ids_clean : [
-      [ "AWS/FSx", "StorageCapacityUtilization",          "FileSystemId", fs_id ],
-      [ "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id ]
+      [
+        "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", fs_id,
+        { stat = "Average", period = 60 }
+      ],
+      [
+        "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", fs_id,
+        { stat = "Average", period = 60 }
+      ]
     ]
   ])
 
-  ################################################################
-  # (Optional) Lambda & SSM time series, kept minimal & string-only
-  ################################################################
-  lambda_metrics = [
-    for fn in var.lambda_function_names : [
-      "AWS/Lambda", "Invocations", "FunctionName", tostring(fn)
-    ]
-  ]
-
-  ssm_metrics = [
-    [ "AWS/SSM-RunCommand", "CommandsSucceeded" ],
-    [ "AWS/SSM-RunCommand", "CommandsFailed" ],
-    [ "AWS/SSM-RunCommand", "CommandsDeliveryTimedOut" ]
-  ]
-
-  ################################################################
-  # Widgets – all metrics lists are arrays of string rows only
-  ################################################################
-  widgets = [
-    # EC2 gauge
-    {
-      type   = "metric"
-      x      = 0
-      y      = 0
-      width  = 24
-      height = 6
-      properties = {
-        region  = var.region
-        view    = "gauge"
-        title   = "EC2 - CPUUtilization (%)"
-        period  = 300
-        stat    = "Average"
-        yAxis   = { left = { min = 0, max = 100 } }
-        metrics = local.ec2_metrics
-      }
-    },
-
-    # EFS gauge — built exactly like EC2 widget
-    {
-      type   = "metric"
-      x      = 0
-      y      = 7
-      width  = 24
-      height = 6
-      properties = {
-        region  = var.region
-        view    = "gauge"
-        title   = "EFS - PercentIOLimit (%)"
-        period  = 60
-        stat    = "Average"
-        yAxis   = { left = { min = 0, max = 100 } }
-        metrics = local.efs_metrics
-      }
-    },
-
-    # FSx gauge — built exactly like EC2 widget
-    {
-      type   = "metric"
-      x      = 0
-      y      = 14
-      width  = 24
-      height = 6
-      properties = {
-        region  = var.region
-        view    = "gauge"
-        title   = "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
-        period  = 60
-        stat    = "Average"
-        yAxis   = { left = { min = 0, max = 100 } }
-        metrics = local.fsx_metrics
-      }
-    },
-
-    # (Optional) Lambda
-    {
-      type   = "metric"
-      x      = 0
-      y      = 21
-      width  = 24
-      height = 6
-      properties = {
-        region  = var.region
-        view    = "timeSeries"
-        title   = "Lambda - Invocations"
-        period  = 300
-        stat    = "Sum"
-        metrics = local.lambda_metrics
-      }
-    },
-
-    # (Optional) SSM
-    {
-      type   = "metric"
-      x      = 0
-      y      = 28
-      width  = 24
-      height = 6
-      properties = {
-        region  = var.region
-        view    = "timeSeries"
-        title   = "SSM RunCommand - Status"
-        period  = 60
-        stat    = "Sum"
-        metrics = local.ssm_metrics
-      }
+  # --- Widgets (drop into your widgets array) ---
+  efs_gauge_widget = {
+    type   = "metric"
+    x      = 0
+    y      = 0
+    width  = 24
+    height = 6
+    properties = {
+      region  = var.region
+      view    = "gauge"
+      title   = "EFS - PercentIOLimit (%)"
+      period  = 60
+      stat    = "Average"
+      yAxis   = { left = { min = 0, max = 100 } }
+      metrics = local.efs_metrics
     }
-  ]
+  }
 
-  dashboard_body = jsonencode({
-    start          = "-PT24H"
-    periodOverride = "inherit"
-    widgets        = local.widgets
-  })
+  fsx_gauge_widget = {
+    type   = "metric"
+    x      = 0
+    y      = 7
+    width  = 24
+    height = 6
+    properties = {
+      region  = var.region
+      view    = "gauge"
+      title   = "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
+      period  = 60
+      stat    = "Average"
+      yAxis   = { left = { min = 0, max = 100 } }
+      metrics = local.fsx_metrics
+    }
+  }
 }
 
-resource "aws_cloudwatch_dashboard" "infra_health" {
-  dashboard_name = "Infra-Health-Overview"
-  dashboard_body = local.dashboard_body
-}
+# If you build the dashboard from a widgets list, include:
+# widgets = concat(
+#   [
+#     # ...your existing widgets...
+#   ],
+#   [
+#     local.efs_gauge_widget,
+#     local.fsx_gauge_widget
+#   ]
+# )
+#
+# And then:
+# dashboard_body = jsonencode({
+#   start          = "-PT24H"
+#   periodOverride = "inherit"
+#   widgets        = local.widgets
+# })
