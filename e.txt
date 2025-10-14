@@ -1,25 +1,14 @@
-data "external" "ebs_volumes" {
-  program = [
-    "cmd.exe","/C",
-    "powershell -NoProfile -Command \"$ErrorActionPreference='Stop'; $ids = aws ec2 describe-volumes --region ${var.region} --query \\\"Volumes[].VolumeId\\\" --output text; $csv = ($ids -split '\\\\s+') -join ','; if (-not $csv) { $csv = '' }; Write-Output ('{\\\"ids_csv\\\":\\\"' + $csv + '\\\"}')\""
-  ]
-}
-
-
-
 locals {
-  # Clean discovered VolumeIds
-  ebs_volume_ids = try(data.external.ebs_volumes.result.ids, [])
-  ebs_ids_clean  = [
-    for id in local.ebs_volume_ids : trimspace(id)
+  # Clean list of VolumeIds from variables
+  ebs_ids_clean = [
+    for id in var.ebs_volume_ids : trimspace(id)
     if length(trimspace(id)) > 0
   ]
-  # Token map for metric-math IDs (no hyphens)
+
+  # Tokens for metric-math IDs (no dashes)
   ebs_id_token = { for id in local.ebs_ids_clean : id => replace(id, "-", "") }
 
-  # For each volume, add hidden inputs + expressions:
-  #  rl_<t> = Sum(VolumeTotalReadTime)/Sum(VolumeReadOps)  => Avg Read Latency (s)
-  #  te_<t> = Average(VolumeThroughputPercentage) > 100    => Throughput Exceeded (1/0)
+  # Hidden inputs + expressions per volume
   ebs_latency_tp_metrics = flatten([
     for vol in local.ebs_ids_clean : [
       [
@@ -47,27 +36,24 @@ locals {
     ]
   ])
 
-  # String for JSON injection in local.final
+  # String to inject into local.final JSON
   ebs_metrics_string = jsonencode(local.ebs_latency_tp_metrics)
 }
 
 
-  # The EBS widget (timeSeries so expressions are valid)
-  ebs_latency_tp_widget = {
-    type   = "metric"
-    x      = 0           # adjust x/y as you like
-    y      = 35
-    width  = 24
-    height = 6
-    properties = {
-      region  = var.region
-      view    = "timeSeries"
-      title   = "EBS - Avg Read Latency (s) & Throughput Exceeded Check"
-      period  = 300
-      stat    = "Average"
-      metrics = local.ebs_latency_tp_metrics
+    /* ---------- NEW: EBS widget ---------- */
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 35,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.ebs_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 300,
+        "stat": "Average",
+        "title": "EBS - Avg Read Latency (s) & Throughput Exceeded Check"
+      }
     }
-  }
-}
-
-
