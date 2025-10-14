@@ -1,33 +1,33 @@
-   {
-│     "dataPath": "/widgets/5/properties/metrics/5",
-│     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
-│   },
-
-
-
-locals {
-  # From variables (keep yours as-is)
+ # ---- EBS (timeSeries; no math; strict rows) ----
+  # We surface raw inputs (validator-safe). Each row has trailing {}.
   ebs_ids_clean = [
     for id in var.ebs_volume_ids : trimspace(id)
     if length(trimspace(id)) > 0
   ]
-
-  # STRICT schema: rows = strings only (no trailing objects, no expressions)
-  # We surface the raw series that underpin your derived metrics:
-  #   - VolumeThroughputPercentage      (percent)
-  #   - VolumeTotalReadTime             (seconds)
-  #   - VolumeReadOps                   (count)
-  #
-  # You can visually correlate latency by comparing TotalReadTime vs ReadOps,
-  # and throughput pressure via ThroughputPercentage.
-  ebs_metrics_strict = flatten([
-    for vol in local.ebs_ids_clean : [
-      [ "AWS/EBS", "VolumeThroughputPercentage", "VolumeId", vol ],
-      [ "AWS/EBS", "VolumeTotalReadTime",       "VolumeId", vol ],
-      [ "AWS/EBS", "VolumeReadOps",             "VolumeId", vol ]
+  ebs_metrics_rows = flatten([
+    [
+      jsonencode(["AWS/EBS","VolumeThroughputPercentage","VolumeId", id, {}]),
+      jsonencode(["AWS/EBS","VolumeTotalReadTime","VolumeId", id, {}]),
+      jsonencode(["AWS/EBS","VolumeReadOps","VolumeId", id, {}])
     ]
+    for id in local.ebs_ids_clean
   ])
+  ebs_metrics_string = "[\n  " ~ join(",\n  ", local.ebs_metrics_rows) ~ "\n]"
 
-  # String to inject into local.final JSON
-  ebs_metrics_string = jsonencode(local.ebs_metrics_strict)
-}
+
+
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 49,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.ebs_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 300,
+        "stat": "Average",
+        "title": "EBS - Throughput %, TotalReadTime, ReadOps"
+      }
+    }
