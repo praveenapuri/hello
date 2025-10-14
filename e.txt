@@ -1,78 +1,38 @@
 locals {
-  # NLB: ActiveFlowCount, RejectedFlowCount (all LoadBalancers)
-  nlb_metrics_search = [
+  # ALB TargetGroup health (all target groups in region)
+  # We pull HealthyHostCount and UnHealthyHostCount via SEARCH, no explicit IDs.
+  alb_tg_metrics_search = [
     [
       {
-        expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"ActiveFlowCount\"', 'Sum', 60)"
-        id         = "nlb_afc"
-        label      = "NLB - ActiveFlowCount"
+        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HealthyHostCount\"', 'Average', 60)"
+        id         = "tg_hc"
+        label      = "ALB TG - HealthyHostCount"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"RejectedFlowCount\"', 'Sum', 60)"
-        id         = "nlb_rfc"
-        label      = "NLB - RejectedFlowCount"
+        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"UnHealthyHostCount\"', 'Average', 60)"
+        id         = "tg_uhc"
+        label      = "ALB TG - UnHealthyHostCount"
       }
     ]
   ]
 
-  # ALB: RequestCount, 4XX, 5XX (all LoadBalancers)
-  alb_metrics_search = [
-    [
-      {
-        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"RequestCount\"', 'Sum', 60)"
-        id         = "alb_req"
-        label      = "ALB - RequestCount"
-      }
-    ],
-    [
-      {
-        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"HTTPCode_ELB_4XX_Count\"', 'Sum', 60)"
-        id         = "alb_4xx"
-        label      = "ALB - HTTPCode_ELB_4XX_Count"
-      }
-    ],
-    [
-      {
-        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"HTTPCode_ELB_5XX_Count\"', 'Sum', 60)"
-        id         = "alb_5xx"
-        label      = "ALB - HTTPCode_ELB_5XX_Count"
-      }
-    ]
-  ]
-
-  # Strings for injecting into your local.final heredoc
-  nlb_metrics_string = jsonencode(local.nlb_metrics_search)
-  alb_metrics_string = jsonencode(local.alb_metrics_search)
+  # String for injecting into local.final
+  alb_tg_metrics_string = jsonencode(local.alb_tg_metrics_search)
 }
     {
       "type": "metric",
       "x": 0,
-      "y": 35,
+      "y": 49,
       "width": 24,
       "height": 6,
       "properties": {
-        "metrics": ${local.nlb_metrics_string},
+        "metrics": ${local.alb_tg_metrics_string},
         "view": "timeSeries",
         "region": "${var.region}",
         "period": 60,
-        "stat": "Sum",
-        "title": "NLB - Active & Rejected Flows (all NLBs)"
-      }
-    },
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 42,
-      "width": 24,
-      "height": 6,
-      "properties": {
-        "metrics": ${local.alb_metrics_string},
-        "view": "timeSeries",
-        "region": "${var.region}",
-        "period": 60,
-        "stat": "Sum",
-        "title": "ALB - Requests, 4XX, 5XX (all ALBs)"
+        "stat": "Average",
+        "title": "ALB TargetGroup Health - Healthy & UnHealthy Host Counts"
       }
     }
