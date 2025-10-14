@@ -1,37 +1,65 @@
 locals {
-  # ALB TargetGroup HTTP & Latency (all target groups)
-  # Counts use Sum; latency uses Average.
-  alb_tg_http_metrics_search = [
+  # EBS metrics via CloudWatch SEARCH (auto-discovers all VolumeId series)
+  # - VolumeThroughputPercentage (Sum works well for a rate-like % over a short period)
+  # - BurstBalance               (Average, native %)
+  # - VolumeReadOps / VolumeWriteOps (Sum)
+  # - VolumeQueueLength          (Average)
+
+  ebs_metrics_search = [
     [
       {
-        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HTTPCode_Target_3XX_Count\"', 'Sum', 60)"
-        id         = "tg_3xx"
-        label      = "ALB TG - HTTPCode_Target_3XX_Count"
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)"
+        id         = "ebs_tp"
+        label      = "EBS - VolumeThroughputPercentage (%)"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HTTPCode_Target_4XX_Count\"', 'Sum', 60)"
-        id         = "tg_4xx"
-        label      = "ALB TG - HTTPCode_Target_4XX_Count"
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"BurstBalance\"', 'Average', 300)"
+        id         = "ebs_bb"
+        label      = "EBS - BurstBalance (%)"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HTTPCode_Target_5XX_Count\"', 'Sum', 60)"
-        id         = "tg_5xx"
-        label      = "ALB TG - HTTPCode_Target_5XX_Count"
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)"
+        id         = "ebs_ro"
+        label      = "EBS - VolumeReadOps"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"TargetResponseTime\"', 'Average', 60)"
-        id         = "tg_trt"
-        label      = "ALB TG - TargetResponseTime (s)"
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeWriteOps\"', 'Sum', 300)"
+        id         = "ebs_wo"
+        label      = "EBS - VolumeWriteOps"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeQueueLength\"', 'Average', 300)"
+        id         = "ebs_ql"
+        label      = "EBS - VolumeQueueLength"
       }
     ]
   ]
 
-  # String for injecting into your local.final heredoc
-  alb_tg_http_metrics_string = jsonencode(local.alb_tg_http_metrics_search)
+  # String to splice into local.final
+  ebs_metrics_string = jsonencode(local.ebs_metrics_search)
 }
+
+
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 63,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.ebs_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 300,
+        "stat": "Average",
+        "title": "EBS - Throughput %, BurstBalance, Read/Write Ops, QueueLength"
+      }
+    }
