@@ -1,51 +1,51 @@
-variable "nlb_load_balancers" {
-  description = "NLB LoadBalancer dimension values (e.g., [\"net/my-nlb/123abc...\"])"
-  type        = list(string)
-  default     = []
-}
-
-variable "alb_load_balancers" {
-  description = "ALB LoadBalancer dimension values (e.g., [\"app/my-alb/abc123...\"])"
-  type        = list(string)
-  default     = []
-}
-
-
 locals {
-  # ---------- NLB ----------
-  nlb_ids_clean = [
-    for id in var.nlb_load_balancers : trimspace(id)
-    if length(trimspace(id)) > 0
+  # NLB: ActiveFlowCount, RejectedFlowCount (all LoadBalancers)
+  nlb_metrics_search = [
+    [
+      {
+        expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"ActiveFlowCount\"', 'Sum', 60)"
+        id         = "nlb_afc"
+        label      = "NLB - ActiveFlowCount"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"RejectedFlowCount\"', 'Sum', 60)"
+        id         = "nlb_rfc"
+        label      = "NLB - RejectedFlowCount"
+      }
+    ]
   ]
 
-  # One row per metric per NLB; each ends with {} to satisfy strict validators
-  nlb_metrics_rows = flatten([
+  # ALB: RequestCount, 4XX, 5XX (all LoadBalancers)
+  alb_metrics_search = [
     [
-      jsonencode(["AWS/NetworkELB","ActiveFlowCount","LoadBalancer", id, {}]),
-      jsonencode(["AWS/NetworkELB","RejectedFlowCount","LoadBalancer", id, {}])
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"RequestCount\"', 'Sum', 60)"
+        id         = "alb_req"
+        label      = "ALB - RequestCount"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"HTTPCode_ELB_4XX_Count\"', 'Sum', 60)"
+        id         = "alb_4xx"
+        label      = "ALB - HTTPCode_ELB_4XX_Count"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"HTTPCode_ELB_5XX_Count\"', 'Sum', 60)"
+        id         = "alb_5xx"
+        label      = "ALB - HTTPCode_ELB_5XX_Count"
+      }
     ]
-    for id in local.nlb_ids_clean
-  ])
-  nlb_metrics_string = "[\n  " ~ join(",\n  ", local.nlb_metrics_rows) ~ "\n]"
-
-  # ---------- ALB ----------
-  alb_ids_clean = [
-    for id in var.alb_load_balancers : trimspace(id)
-    if length(trimspace(id)) > 0
   ]
 
-  alb_metrics_rows = flatten([
-    [
-      jsonencode(["AWS/ApplicationELB","RequestCount","LoadBalancer", id, {}]),
-      jsonencode(["AWS/ApplicationELB","HTTPCode_ELB_4XX_Count","LoadBalancer", id, {}]),
-      jsonencode(["AWS/ApplicationELB","HTTPCode_ELB_5XX_Count","LoadBalancer", id, {}])
-    ]
-    for id in local.alb_ids_clean
-  ])
-  alb_metrics_string = "[\n  " ~ join(",\n  ", local.alb_metrics_rows) ~ "\n]"
+  # Strings for injecting into your local.final heredoc
+  nlb_metrics_string = jsonencode(local.nlb_metrics_search)
+  alb_metrics_string = jsonencode(local.alb_metrics_search)
 }
-
-
     {
       "type": "metric",
       "x": 0,
@@ -58,7 +58,7 @@ locals {
         "region": "${var.region}",
         "period": 60,
         "stat": "Sum",
-        "title": "NLB - ActiveFlowCount & RejectedFlowCount"
+        "title": "NLB - Active & Rejected Flows (all NLBs)"
       }
     },
     {
@@ -73,6 +73,6 @@ locals {
         "region": "${var.region}",
         "period": 60,
         "stat": "Sum",
-        "title": "ALB - RequestCount, 4XX, 5XX"
+        "title": "ALB - Requests, 4XX, 5XX (all ALBs)"
       }
     }
