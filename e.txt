@@ -2,3 +2,32 @@
 │     "dataPath": "/widgets/5/properties/metrics/5",
 │     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
 │   },
+
+
+
+locals {
+  # From variables (keep yours as-is)
+  ebs_ids_clean = [
+    for id in var.ebs_volume_ids : trimspace(id)
+    if length(trimspace(id)) > 0
+  ]
+
+  # STRICT schema: rows = strings only (no trailing objects, no expressions)
+  # We surface the raw series that underpin your derived metrics:
+  #   - VolumeThroughputPercentage      (percent)
+  #   - VolumeTotalReadTime             (seconds)
+  #   - VolumeReadOps                   (count)
+  #
+  # You can visually correlate latency by comparing TotalReadTime vs ReadOps,
+  # and throughput pressure via ThroughputPercentage.
+  ebs_metrics_strict = flatten([
+    for vol in local.ebs_ids_clean : [
+      [ "AWS/EBS", "VolumeThroughputPercentage", "VolumeId", vol ],
+      [ "AWS/EBS", "VolumeTotalReadTime",       "VolumeId", vol ],
+      [ "AWS/EBS", "VolumeReadOps",             "VolumeId", vol ]
+    ]
+  ])
+
+  # String to inject into local.final JSON
+  ebs_metrics_string = jsonencode(local.ebs_metrics_strict)
+}
