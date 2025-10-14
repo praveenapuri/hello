@@ -1,33 +1,78 @@
- # ---- EBS (timeSeries; no math; strict rows) ----
-  # We surface raw inputs (validator-safe). Each row has trailing {}.
-  ebs_ids_clean = [
-    for id in var.ebs_volume_ids : trimspace(id)
+variable "nlb_load_balancers" {
+  description = "NLB LoadBalancer dimension values (e.g., [\"net/my-nlb/123abc...\"])"
+  type        = list(string)
+  default     = []
+}
+
+variable "alb_load_balancers" {
+  description = "ALB LoadBalancer dimension values (e.g., [\"app/my-alb/abc123...\"])"
+  type        = list(string)
+  default     = []
+}
+
+
+locals {
+  # ---------- NLB ----------
+  nlb_ids_clean = [
+    for id in var.nlb_load_balancers : trimspace(id)
     if length(trimspace(id)) > 0
   ]
-  ebs_metrics_rows = flatten([
-    [
-      jsonencode(["AWS/EBS","VolumeThroughputPercentage","VolumeId", id, {}]),
-      jsonencode(["AWS/EBS","VolumeTotalReadTime","VolumeId", id, {}]),
-      jsonencode(["AWS/EBS","VolumeReadOps","VolumeId", id, {}])
-    ]
-    for id in local.ebs_ids_clean
-  ])
-  ebs_metrics_string = "[\n  " ~ join(",\n  ", local.ebs_metrics_rows) ~ "\n]"
 
+  # One row per metric per NLB; each ends with {} to satisfy strict validators
+  nlb_metrics_rows = flatten([
+    [
+      jsonencode(["AWS/NetworkELB","ActiveFlowCount","LoadBalancer", id, {}]),
+      jsonencode(["AWS/NetworkELB","RejectedFlowCount","LoadBalancer", id, {}])
+    ]
+    for id in local.nlb_ids_clean
+  ])
+  nlb_metrics_string = "[\n  " ~ join(",\n  ", local.nlb_metrics_rows) ~ "\n]"
+
+  # ---------- ALB ----------
+  alb_ids_clean = [
+    for id in var.alb_load_balancers : trimspace(id)
+    if length(trimspace(id)) > 0
+  ]
+
+  alb_metrics_rows = flatten([
+    [
+      jsonencode(["AWS/ApplicationELB","RequestCount","LoadBalancer", id, {}]),
+      jsonencode(["AWS/ApplicationELB","HTTPCode_ELB_4XX_Count","LoadBalancer", id, {}]),
+      jsonencode(["AWS/ApplicationELB","HTTPCode_ELB_5XX_Count","LoadBalancer", id, {}])
+    ]
+    for id in local.alb_ids_clean
+  ])
+  alb_metrics_string = "[\n  " ~ join(",\n  ", local.alb_metrics_rows) ~ "\n]"
+}
 
 
     {
       "type": "metric",
       "x": 0,
-      "y": 49,
+      "y": 35,
       "width": 24,
       "height": 6,
       "properties": {
-        "metrics": ${local.ebs_metrics_string},
+        "metrics": ${local.nlb_metrics_string},
         "view": "timeSeries",
         "region": "${var.region}",
-        "period": 300,
-        "stat": "Average",
-        "title": "EBS - Throughput %, TotalReadTime, ReadOps"
+        "period": 60,
+        "stat": "Sum",
+        "title": "NLB - ActiveFlowCount & RejectedFlowCount"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 42,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.alb_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "stat": "Sum",
+        "title": "ALB - RequestCount, 4XX, 5XX"
       }
     }
