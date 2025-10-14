@@ -1,19 +1,14 @@
-variable "ebs_latency_gauge_max" {
-  description = "Y-axis max for EBS Avg Read Latency gauge (seconds)"
-  type        = number
-  default     = 2
-}
-
 locals {
+  # Hidden helpers + two visible gauges
   ebs_latency_tp_search = [
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)",     id = "ebs_rt", label = "EBS - VolumeTotalReadTime" }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)",     id = "ebs_rt", label = "helper: TotalReadTime",            visible = false }
     ],
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)",           id = "ebs_ro", label = "EBS - VolumeReadOps" }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)",           id = "ebs_ro", label = "helper: ReadOps",                  visible = false }
     ],
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)", id = "ebs_tp", label = "EBS - VolumeThroughputPercentage" }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)", id = "ebs_tp", label = "helper: Throughput%",     visible = false }
     ],
     [
       { expression = "IF(SUM(ebs_ro)>0, SUM(ebs_rt)/SUM(ebs_ro), 0)", id = "ebs_rl", label = "EBS - VolumeAvgReadLatency (s)" }
@@ -25,6 +20,7 @@ locals {
 
   ebs_latency_tp_metrics_string = jsonencode(local.ebs_latency_tp_search)
 }
+
 
     {
       "type": "metric",
@@ -38,7 +34,7 @@ locals {
         "region": "${var.region}",
         "period": 300,
         "stat": "Average",
-        "yAxis": { "left": { "min": 0, "max": ${var.ebs_latency_gauge_max} } },
+        "yAxis": { "left": { "min": 0, "max": 2 } },
         "title": "EBS - Avg Read Latency (s) & Throughput Exceeded (0/1)"
       }
     }
