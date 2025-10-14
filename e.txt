@@ -1,38 +1,37 @@
 locals {
-  # ALB TargetGroup health (all target groups in region)
-  # We pull HealthyHostCount and UnHealthyHostCount via SEARCH, no explicit IDs.
-  alb_tg_metrics_search = [
+  # ALB TargetGroup HTTP & Latency (all target groups)
+  # Counts use Sum; latency uses Average.
+  alb_tg_http_metrics_search = [
     [
       {
-        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HealthyHostCount\"', 'Average', 60)"
-        id         = "tg_hc"
-        label      = "ALB TG - HealthyHostCount"
+        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HTTPCode_Target_3XX_Count\"', 'Sum', 60)"
+        id         = "tg_3xx"
+        label      = "ALB TG - HTTPCode_Target_3XX_Count"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"UnHealthyHostCount\"', 'Average', 60)"
-        id         = "tg_uhc"
-        label      = "ALB TG - UnHealthyHostCount"
+        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HTTPCode_Target_4XX_Count\"', 'Sum', 60)"
+        id         = "tg_4xx"
+        label      = "ALB TG - HTTPCode_Target_4XX_Count"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"HTTPCode_Target_5XX_Count\"', 'Sum', 60)"
+        id         = "tg_5xx"
+        label      = "ALB TG - HTTPCode_Target_5XX_Count"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,TargetGroup} MetricName=\"TargetResponseTime\"', 'Average', 60)"
+        id         = "tg_trt"
+        label      = "ALB TG - TargetResponseTime (s)"
       }
     ]
   ]
 
-  # String for injecting into local.final
-  alb_tg_metrics_string = jsonencode(local.alb_tg_metrics_search)
+  # String for injecting into your local.final heredoc
+  alb_tg_http_metrics_string = jsonencode(local.alb_tg_http_metrics_search)
 }
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 49,
-      "width": 24,
-      "height": 6,
-      "properties": {
-        "metrics": ${local.alb_tg_metrics_string},
-        "view": "timeSeries",
-        "region": "${var.region}",
-        "period": 60,
-        "stat": "Average",
-        "title": "ALB TargetGroup Health - Healthy & UnHealthy Host Counts"
-      }
-    }
