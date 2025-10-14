@@ -1,52 +1,53 @@
 locals {
-  # EBS metrics via CloudWatch SEARCH (auto-discovers all VolumeId series)
-  # - VolumeThroughputPercentage (Sum works well for a rate-like % over a short period)
-  # - BurstBalance               (Average, native %)
-  # - VolumeReadOps / VolumeWriteOps (Sum)
-  # - VolumeQueueLength          (Average)
+  # EBS aggregate metrics via SEARCH + math (no per-VolumeId rows)
+  # - ebs_rt: all VolumeTotalReadTime series (Sum)
+  # - ebs_ro: all VolumeReadOps series (Sum)
+  # - ebs_tp: all VolumeThroughputPercentage series (Average)
+  # - ebs_rl: aggregate Avg Read Latency (seconds) = SUM(rt) / SUM(ro) with zero-guard
+  # - ebs_te: ThroughputExceededCheck (1 if any volume >100%, else 0)
 
-  ebs_metrics_search = [
+  ebs_latency_tp_search = [
     [
       {
-        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)"
-        id         = "ebs_tp"
-        label      = "EBS - VolumeThroughputPercentage (%)"
-      }
-    ],
-    [
-      {
-        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"BurstBalance\"', 'Average', 300)"
-        id         = "ebs_bb"
-        label      = "EBS - BurstBalance (%)"
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)"
+        id         = "ebs_rt"
+        label      = "EBS - VolumeTotalReadTime (all volumes)"
       }
     ],
     [
       {
         expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)"
         id         = "ebs_ro"
-        label      = "EBS - VolumeReadOps"
+        label      = "EBS - VolumeReadOps (all volumes)"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeWriteOps\"', 'Sum', 300)"
-        id         = "ebs_wo"
-        label      = "EBS - VolumeWriteOps"
+        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)"
+        id         = "ebs_tp"
+        label      = "EBS - VolumeThroughputPercentage (all volumes)"
       }
     ],
     [
       {
-        expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeQueueLength\"', 'Average', 300)"
-        id         = "ebs_ql"
-        label      = "EBS - VolumeQueueLength"
+        # Guard against division by zero using IF(...)
+        expression = "IF(SUM(ebs_ro)>0, SUM(ebs_rt)/SUM(ebs_ro), 0)"
+        id         = "ebs_rl"
+        label      = "EBS - VolumeAvgReadLatency (s) [Aggregate]"
+      }
+    ],
+    [
+      {
+        expression = "IF(MAX(ebs_tp)>100, 1, 0)"
+        id         = "ebs_te"
+        label      = "EBS - ThroughputExceededCheck (1=yes)"
       }
     ]
   ]
 
-  # String to splice into local.final
-  ebs_metrics_string = jsonencode(local.ebs_metrics_search)
+  # String for injecting into your local.final heredoc
+  ebs_latency_tp_metrics_string = jsonencode(local.ebs_latency_tp_search)
 }
-
 
     {
       "type": "metric",
@@ -55,11 +56,11 @@ locals {
       "width": 24,
       "height": 6,
       "properties": {
-        "metrics": ${local.ebs_metrics_string},
+        "metrics": ${local.ebs_latency_tp_metrics_string},
         "view": "timeSeries",
         "region": "${var.region}",
         "period": 300,
         "stat": "Average",
-        "title": "EBS - Throughput %, BurstBalance, Read/Write Ops, QueueLength"
+        "title": "EBS - Avg Read Latency (s) & Throughput Exceeded Check (aggregate)"
       }
     }
