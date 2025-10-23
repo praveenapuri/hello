@@ -1,4 +1,16 @@
 ##########################################
+# (Optional) Pin provider for consistency
+##########################################
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
+  }
+}
+
+##########################################
 # Input: your target EC2 instance IDs
 ##########################################
 variable "instance_ids" {
@@ -20,6 +32,7 @@ data "aws_instance" "selected" {
 
 ##########################################
 # Collect volume attachments (root + additional EBS)
+# NOTE: We rely on instance block-device mappings (not 'attachments')
 ##########################################
 locals {
   attached = flatten([
@@ -33,7 +46,7 @@ locals {
           volume_id   = rb.volume_id
         }
       ],
-      # Additional EBS volumes
+      # Additional EBS volumes defined for the instance
       [
         for eb in try(inst.ebs_block_device, []) : {
           instance_id = inst.id
@@ -48,8 +61,7 @@ locals {
 }
 
 ##########################################
-# Look up each volume's details
-# (Use filter name = "volume-id")
+# Look up each volume's details (by volume-id filter)
 ##########################################
 data "aws_ebs_volume" "by_id" {
   for_each = local.volume_ids
@@ -61,23 +73,26 @@ data "aws_ebs_volume" "by_id" {
 }
 
 ##########################################
-# Output: one row per attachment with volume details
+# Output: one row per attachment with supported attributes
 ##########################################
 output "ebs_volume_details" {
   value = [
     for a in local.attached : {
-      instance_id    = a.instance_id
-      device         = a.device
-      volume_id      = a.volume_id
-      size_gib       = data.aws_ebs_volume.by_id[a.volume_id].size
-      volume_type    = data.aws_ebs_volume.by_id[a.volume_id].type
-      iops           = try(data.aws_ebs_volume.by_id[a.volume_id].iops, null)
-      throughput_mb  = try(data.aws_ebs_volume.by_id[a.volume_id].throughput, null)
-      az             = data.aws_ebs_volume.by_id[a.volume_id].availability_zone
-      encrypted      = data.aws_ebs_volume.by_id[a.volume_id].encrypted
-      state          = data.aws_ebs_volume.by_id[a.volume_id].state
-      name           = try(data.aws_ebs_volume.by_id[a.volume_id].tags["Name"], null)
-      tags           = try(data.aws_ebs_volume.by_id[a.volume_id].tags, null)
+      instance_id         = a.instance_id
+      device              = a.device
+      volume_id           = a.volume_id
+
+      # Supported attributes on aws_ebs_volume data source
+      size_gib            = data.aws_ebs_volume.by_id[a.volume_id].size
+      volume_type         = data.aws_ebs_volume.by_id[a.volume_id].type
+      iops                = try(data.aws_ebs_volume.by_id[a.volume_id].iops, null)
+      throughput_mb       = try(data.aws_ebs_volume.by_id[a.volume_id].throughput, null)
+      availability_zone   = data.aws_ebs_volume.by_id[a.volume_id].availability_zone
+      encrypted           = data.aws_ebs_volume.by_id[a.volume_id].encrypted
+      multi_attach        = try(data.aws_ebs_volume.by_id[a.volume_id].multi_attach_enabled, null)
+      kms_key_id          = try(data.aws_ebs_volume.by_id[a.volume_id].kms_key_id, null)
+      name                = try(data.aws_ebs_volume.by_id[a.volume_id].tags["Name"], null)
+      tags                = try(data.aws_ebs_volume.by_id[a.volume_id].tags, null)
     }
   ]
 }
