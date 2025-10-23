@@ -1,85 +1,26 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-}
-
 ##########################################
-# Input: target EC2 instance IDs
+# Pretty table-style output
 ##########################################
-variable "instance_ids" {
-  type        = list(string)
-  description = "EC2 instance IDs whose attached EBS volumes you want to inspect"
-  default     = [
-    "i-0123456789abcdef0",
-    "i-0fedcba9876543210"
-  ]
-}
-
-##########################################
-# 1) For each instance, list its attached EBS volume IDs
-#    via filter attachment.instance-id
-##########################################
-data "aws_ebs_volumes" "by_instance" {
-  for_each = toset(var.instance_ids)
-
-  filter {
-    name   = "attachment.instance-id"
-    values = [each.value]
-  }
-}
-
-##########################################
-# 2) Collect the unique set of volume IDs across all instances
-##########################################
-locals {
-  all_volume_ids = toset(flatten([
-    for k, v in data.aws_ebs_volumes.by_instance : v.ids
-  ]))
-}
-
-##########################################
-# 3) Fetch details for every volume ID
-#    (use filter name = "volume-id"; do NOT set volume_id directly)
-##########################################
-data "aws_ebs_volume" "details" {
-  for_each = local.all_volume_ids
-
-  filter {
-    name   = "volume-id"
-    values = [each.value]
-  }
-}
-
-##########################################
-# 4) Build output: InstanceId -> list of volume detail objects
-#    Only use attributes exposed by aws_ebs_volume data source.
-##########################################
-locals {
-  volumes_by_instance = {
-    for inst_id, volset in data.aws_ebs_volumes.by_instance :
-    inst_id => [
-      for vid in volset.ids : {
-        volume_id         = vid
-        size_gib          = data.aws_ebs_volume.details[vid].size
-        volume_type       = data.aws_ebs_volume.details[vid].volume_type
-        iops              = try(data.aws_ebs_volume.details[vid].iops, null)
-        throughput_mb     = try(data.aws_ebs_volume.details[vid].throughput, null)
-        availability_zone = data.aws_ebs_volume.details[vid].availability_zone
-        encrypted         = data.aws_ebs_volume.details[vid].encrypted
-        multi_attach      = try(data.aws_ebs_volume.details[vid].multi_attach_enabled, null)
-        kms_key_id        = try(data.aws_ebs_volume.details[vid].kms_key_id, null)
-        name              = try(data.aws_ebs_volume.details[vid].tags["Name"], null)
-        tags              = try(data.aws_ebs_volume.details[vid].tags, null)
-      }
+output "ebs_volume_table" {
+  value = join("\n", flatten([
+    # Header
+    ["InstanceID | VolumeID | Size(GB) | Type | IOPS | Throughput(MB) | AZ | Encrypted | Name"],
+    # Rows
+    [
+      for inst_id, vols in local.volumes_by_instance : [
+        for v in vols : format(
+          "%s | %s | %d | %s | %s | %s | %s | %t | %s",
+          inst_id,
+          v.volume_id,
+          v.size_gib,
+          v.volume_type,
+          coalesce(tostring(v.iops), "-"),
+          coalesce(tostring(v.throughput_mb), "-"),
+          v.availability_zone,
+          v.encrypted,
+          coalesce(v.name, "-")
+        )
+      ]
     ]
-  }
-}
-
-output "ebs_volumes_by_instance" {
-  description = "Map of InstanceId => list of attached EBS volumes with capacity details"
-  value       = local.volumes_by_instance
+  ]))
 }
