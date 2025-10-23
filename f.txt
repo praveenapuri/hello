@@ -6,3 +6,6 @@ aws service-quotas list-service-quotas \
 
 
 SSL validation failed for https://servicequotas.us-east-1.amazonaws.com/ [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)
+
+aws --no-verify-ssl service-quotas list-service-quotas --service-code ebs --region us-east-1
+
