@@ -1,21 +1,3 @@
-locals {
-  ebs_latency_tp_search = [
-    [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)",     id = "ebs_rt", label = "helper: TotalReadTime",  visible = false }
-    ],
-    [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)",           id = "ebs_ro", label = "helper: ReadOps",        visible = false }
-    ],
-    [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)", id = "ebs_tp", label = "helper: Throughput%", visible = false }
-    ],
-    [
-      { expression = "IF(SUM(ebs_ro)>0, SUM(ebs_rt)/SUM(ebs_ro)*1000, 0)", id = "ebs_rl_ms", label = "EBS - VolumeAvgReadLatency (ms)" }
-    ],
-    [
-      { expression = "IF(MAX(ebs_tp)>100, 1, 0)", id = "ebs_te", label = "EBS - ThroughputExceededCheck (0/1)" }
-    ]
-  ]
-
-  ebs_latency_tp_metrics_string = jsonencode(local.ebs_latency_tp_search)
-}
+aws ec2 describe-instance-types \
+  --instance-types m7i.4xlarge c7i.8xlarge r7i.4xlarge \
+  --query 'InstanceTypes[].{Type:InstanceType,Ebs:EbsInfo.EbsOptimizedInfo}'
