@@ -1,26 +1,39 @@
-##########################################
-# Pretty table-style output
-##########################################
-output "ebs_volume_table" {
-  value = join("\n", flatten([
-    # Header
-    ["InstanceID | VolumeID | Size(GB) | Type | IOPS | Throughput(MB) | AZ | Encrypted | Name"],
-    # Rows
-    [
-      for inst_id, vols in local.volumes_by_instance : [
-        for v in vols : format(
-          "%s | %s | %d | %s | %s | %s | %s | %t | %s",
-          inst_id,
-          v.volume_id,
-          v.size_gib,
-          v.volume_type,
-          coalesce(tostring(v.iops), "-"),
-          coalesce(tostring(v.throughput_mb), "-"),
-          v.availability_zone,
-          v.encrypted,
-          coalesce(v.name, "-")
-        )
-      ]
-    ]
-  ]))
-}
+InstanceID → You’ll likely have more instances (scale-out) to stay under per-instance EBS bandwidth/IOPS caps. Expect the number of distinct InstanceIDs to increase.
+
+VolumeID → You’ll attach more volumes overall (and often per instance) to stripe for performance and capacity. Row count grows.
+
+Size(GB) → Increases to hold the larger hot dataset, indexes, and logs—unless you aggressively tier most data to S3. Plan headroom (+25–30%).
+
+Type → May change. Many teams move some workloads from gp3 to io2/io2 Block Express for tighter latency and higher IOPS at scale. Others keep gp3 but stripe more volumes.
+
+IOPS → Increases roughly with peak active users × ops per txn / avg I/O size. If IOPS demand exceeds a single volume’s limit, you’ll raise provisioned IOPS and/or add more striped volumes.
+
+Throughput(MB) → Increases with bigger sequential scans, compactions, reindexes, and batch jobs. If a single gp3 (up to 1,000 MB/s) isn’t enough, stripe and/or scale out across instances.
+
+AZ → The distribution broadens as you spread load and storage across multiple AZs (and possibly additional Regions) for resilience and quota headroom.
+
+Encrypted → Should remain the same (usually true). Not impacted by scale—just ensure KMS limits are sufficient if API usage spikes.
+
+Name → No material impact; it’s just a tag.
+
+Quick sanity rules
+
+If concurrency (A%) and per-user workload stay proportional, expect ~160× storage and I/O demand when going from 100k → 16M users. In practice, cache hit rates, batching, and tiering can temper this.
+
+Watch instance EBS caps (IOPS/MBps) as closely as per-volume limits—scale out and stripe when you approach ~70–80% of either.
+
+What to do next (fast checklist)
+
+Capacity: Increase Size(GB) and/or number of volumes; plan S3 tiering for warm/cold data.
+
+Performance: Raise IOPS and Throughput(MB) on gp3 or move hot paths to io2; stripe if needed.
+
+Topology: Add more InstanceIDs and spread across AZs.
+
+Quotas: Verify EBS per-Region quotas (volumes, total storage, provisioned IOPS/throughput) and request increases ahead of time.
+
+Cost/latency trade-offs: Prefer gp3 stripes where latency allows; reserve io2 for critical low-latency segments.
+
+If you share a few workload knobs (active-user %, ops/txn, avg I/O size, read/write mix), I can translate this into concrete targets for Size(GB), IOPS, Throughput(MB), #volumes per instance, and volume type mix.
+
+ChatGPT can make mistakes. Check important info.
