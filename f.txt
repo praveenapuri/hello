@@ -1,21 +1,22 @@
-       InstanceID | VolumeID | Size(GB) | Type | IOPS | Throughput(MB) | AZ | Encrypted | Name
-        i-03750376253209059 | vol-089fd859dd3b16926 | 300 | gp3 | 3000 | 125 | us-east-1b | true | epic-payer-chronicles-prod-data-vol3-restored
-        i-03750376253209059 | vol-0e381a99cee672ab9 | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol1
-        i-03750376253209059 | vol-0177c3011e7b4a1d3 | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol4
-        i-03750376253209059 | vol-05bd88386942bf561 | 800 | gp3 | 3000 | 125 | us-east-1b | true | epic-payer-chronicles-support-prod-data-vol2-restored
-        i-03750376253209059 | vol-0a24d39c390c456fb | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol1
-        i-03750376253209059 | vol-0c9032bee0bc6a8c6 | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol4
-        i-03750376253209059 | vol-0a4fad6b5d3847fdd | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol5
-        i-03750376253209059 | vol-0637447d0da258b82 | 300 | gp3 | 3000 | 125 | us-east-1b | true | epic-payer-chronicles-prod-data-vol3-restore
-        i-03750376253209059 | vol-0656adb19657c4186 | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol5
-        i-03750376253209059 | vol-02539d5d4f651a04c | 100 | gp3 | 3000 | 125 | us-east-1b | true | epic-payer-chronicles-support-prod-root-vol
-        i-03750376253209059 | vol-0f5053ec9c572cc13 | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol6
-        i-03750376253209059 | vol-0a84babc9ad70ca23 | 1024 | io2 | 3000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol6
-        i-03750376253209059 | vol-0a68e5cadf023e98a | 500 | gp3 | 3000 | 250 | us-east-1b | true | epic-payer-chronicles-support-prod-data-vol3
-        i-06c45d2d7c05c66dd | vol-0fe9676b93ff51819 | 1024 | io2 | 4900 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol4
-        i-06c45d2d7c05c66dd | vol-0b2032b4691bc236c | 300 | io2 | 600 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol3
-        i-06c45d2d7c05c66dd | vol-0169d82b5f4376cca | 300 | io2 | 300 | 0 | us-east-1b | true | epic-payer-chronicles-prod-root-vol
-        i-06c45d2d7c05c66dd | vol-0b373880acf425ac5 | 1024 | io2 | 4900 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol6
-        i-06c45d2d7c05c66dd | vol-01c91a8fe65e305af | 1024 | io2 | 4900 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol5
-        i-06c45d2d7c05c66dd | vol-05e8d4ab880e1d167 | 1024 | io2 | 4900 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol1
-        i-06c45d2d7c05c66dd | vol-07909a71211218f78 | 2700 | io2 | 4000 | 0 | us-east-1b | true | epic-payer-chronicles-prod-data-vol2
+| InstanceID          | VolumeID              | Size (GB) | Type | IOPS | Throughput (MB/s) | AZ         | Encrypted | Name                                                  |
+| ------------------- | --------------------- | --------- | ---- | ---- | ----------------- | ---------- | --------- | ----------------------------------------------------- |
+| i-03750376253209059 | vol-089fd859dd3b16926 | 300       | gp3  | 3000 | 125               | us-east-1b | true      | epic-payer-chronicles-prod-data-vol3-restored         |
+| i-03750376253209059 | vol-0e381a99cee672ab9 | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol1                  |
+| i-03750376253209059 | vol-0177c3011e7b4a1d3 | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol4                  |
+| i-03750376253209059 | vol-05bd88386942bf561 | 800       | gp3  | 3000 | 125               | us-east-1b | true      | epic-payer-chronicles-support-prod-data-vol2-restored |
+| i-03750376253209059 | vol-0a24d39c390c456fb | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol1                  |
+| i-03750376253209059 | vol-0c9032bee0bc6a8c6 | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol4                  |
+| i-03750376253209059 | vol-0a4fad6b5d3847fdd | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol5                  |
+| i-03750376253209059 | vol-0637447d0da258b82 | 300       | gp3  | 3000 | 125               | us-east-1b | true      | epic-payer-chronicles-prod-data-vol3-restore          |
+| i-03750376253209059 | vol-0656adb19657c4186 | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol5                  |
+| i-03750376253209059 | vol-02539d5d4f651a04c | 100       | gp3  | 3000 | 125               | us-east-1b | true      | epic-payer-chronicles-support-prod-root-vol           |
+| i-03750376253209059 | vol-0f5053ec9c572cc13 | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol6                  |
+| i-03750376253209059 | vol-0a84babc9ad70ca23 | 1024      | io2  | 3000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol6                  |
+| i-03750376253209059 | vol-0a68e5cadf023e98a | 500       | gp3  | 3000 | 250               | us-east-1b | true      | epic-payer-chronicles-support-prod-data-vol3          |
+| i-06c45d2d7c05c66dd | vol-0fe9676b93ff51819 | 1024      | io2  | 4900 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol4                  |
+| i-06c45d2d7c05c66dd | vol-0b2032b4691bc236c | 300       | io2  | 600  | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol3                  |
+| i-06c45d2d7c05c66dd | vol-0169d82b5f4376cca | 300       | io2  | 300  | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-root-vol                   |
+| i-06c45d2d7c05c66dd | vol-0b373880acf425ac5 | 1024      | io2  | 4900 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol6                  |
+| i-06c45d2d7c05c66dd | vol-01c91a8fe65e305af | 1024      | io2  | 4900 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol5                  |
+| i-06c45d2d7c05c66dd | vol-05e8d4ab880e1d167 | 1024      | io2  | 4900 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol1                  |
+| i-06c45d2d7c05c66dd | vol-07909a71211218f78 | 2700      | io2  | 4000 | 0                 | us-east-1b | true      | epic-payer-chronicles-prod-data-vol2                  |
