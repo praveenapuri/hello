@@ -69,4 +69,17 @@ locals {
         iops              = try(data.aws_ebs_volume.details[vid].iops, null)
         throughput_mb     = try(data.aws_ebs_volume.details[vid].throughput, null)
         availability_zone = data.aws_ebs_volume.details[vid].availability_zone
-        encrypted         = data.aws_eb_
+        encrypted         = data.aws_ebs_volume.details[vid].encrypted
+        multi_attach      = try(data.aws_ebs_volume.details[vid].multi_attach_enabled, null)
+        kms_key_id        = try(data.aws_ebs_volume.details[vid].kms_key_id, null)
+        name              = try(data.aws_ebs_volume.details[vid].tags["Name"], null)
+        tags              = try(data.aws_ebs_volume.details[vid].tags, null)
+      }
+    ]
+  }
+}
+
+output "ebs_volumes_by_instance" {
+  description = "Map of InstanceId => list of attached EBS volumes with capacity details"
+  value       = local.volumes_by_instance
+}
