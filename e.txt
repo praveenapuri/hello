@@ -12,7 +12,6 @@ Throughput(MB) → Increases with bigger sequential scans, compactions, reindexe
 
 AZ → The distribution broadens as you spread load and storage across multiple AZs (and possibly additional Regions) for resilience and quota headroom.
 
-Encrypted → Should remain the same (usually true). Not impacted by scale—just ensure KMS limits are sufficient if API usage spikes.
 
 Name → No material impact; it’s just a tag.
 
@@ -35,5 +34,3 @@ Quotas: Verify EBS per-Region quotas (volumes, total storage, provisioned IOPS/t
 Cost/latency trade-offs: Prefer gp3 stripes where latency allows; reserve io2 for critical low-latency segments.
 
 If you share a few workload knobs (active-user %, ops/txn, avg I/O size, read/write mix), I can translate this into concrete targets for Size(GB), IOPS, Throughput(MB), #volumes per instance, and volume type mix.
-
-ChatGPT can make mistakes. Check important info.
