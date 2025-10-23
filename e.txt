@@ -1,7 +1,83 @@
- Error: Unsupported attribute
-│
-│   on main.tf line 44, in locals:
-│   44:       for a in v.attachments : a.instance_id
-│
-│ This object does not have an attribute named "attachments".
-╵
+##########################################
+# Input: your target EC2 instance IDs
+##########################################
+variable "instance_ids" {
+  type        = list(string)
+  description = "EC2 instance IDs whose attached EBS volumes you want to inspect"
+  default     = [
+    "i-0123456789abcdef0",
+    "i-0fedcba9876543210"
+  ]
+}
+
+##########################################
+# Read each instance to get its block devices
+##########################################
+data "aws_instance" "selected" {
+  for_each    = toset(var.instance_ids)
+  instance_id = each.value
+}
+
+##########################################
+# Collect volume attachments (root + additional EBS)
+##########################################
+locals {
+  attached = flatten([
+    for inst in data.aws_instance.selected :
+    concat(
+      # Root volume(s)
+      [
+        for rb in try(inst.root_block_device, []) : {
+          instance_id = inst.id
+          device      = try(rb.device_name, "/dev/xvda")
+          volume_id   = rb.volume_id
+        }
+      ],
+      # Additional EBS volumes
+      [
+        for eb in try(inst.ebs_block_device, []) : {
+          instance_id = inst.id
+          device      = eb.device_name
+          volume_id   = eb.volume_id
+        }
+      ]
+    )
+  ])
+
+  volume_ids = toset([for a in local.attached : a.volume_id])
+}
+
+##########################################
+# Look up each volume's details
+# (Use filter name = "volume-id")
+##########################################
+data "aws_ebs_volume" "by_id" {
+  for_each = local.volume_ids
+
+  filter {
+    name   = "volume-id"
+    values = [each.value]
+  }
+}
+
+##########################################
+# Output: one row per attachment with volume details
+##########################################
+output "ebs_volume_details" {
+  value = [
+    for a in local.attached : {
+      instance_id    = a.instance_id
+      device         = a.device
+      volume_id      = a.volume_id
+      size_gib       = data.aws_ebs_volume.by_id[a.volume_id].size
+      volume_type    = data.aws_ebs_volume.by_id[a.volume_id].type
+      iops           = try(data.aws_ebs_volume.by_id[a.volume_id].iops, null)
+      throughput_mb  = try(data.aws_ebs_volume.by_id[a.volume_id].throughput, null)
+      az             = data.aws_ebs_volume.by_id[a.volume_id].availability_zone
+      encrypted      = data.aws_ebs_volume.by_id[a.volume_id].encrypted
+      state          = data.aws_ebs_volume.by_id[a.volume_id].state
+      name           = try(data.aws_ebs_volume.by_id[a.volume_id].tags["Name"], null)
+      tags           = try(data.aws_ebs_volume.by_id[a.volume_id].tags, null)
+    }
+  ]
+}
