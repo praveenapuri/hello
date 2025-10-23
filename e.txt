@@ -1,65 +1,7 @@
-##########################################
-# Variables
-##########################################
-variable "instance_ids" {
-  type        = list(string)
-  description = "EC2 instance IDs whose attached EBS volumes you want to inspect"
-  default     = [
-    "i-0123456789abcdef0",
-    "i-0fedcba9876543210"
-  ]
-}
-
-##########################################
-# 1) Get all EBS volumes in the region
-##########################################
-data "aws_ebs_volumes" "all" {}
-
-##########################################
-# 2) For each volume ID, fetch full details
-#    (Use filter name=volume-id; don't set volume_id directly)
-##########################################
-data "aws_ebs_volume" "by_id" {
-  for_each = toset(data.aws_ebs_volumes.all.ids)
-
-  filter {
-    name   = "volume-id"
-    values = [each.value]
-  }
-}
-
-##########################################
-# 3) Keep only volumes attached to the selected instances
-##########################################
-locals {
-  selected = {
-    for vid, v in data.aws_ebs_volume.by_id :
-    vid => v
-    if length([
-      for a in v.attachments : a.instance_id
-      if contains(var.instance_ids, a.instance_id)
-    ]) > 0
-  }
-}
-
-##########################################
-# 4) Output useful details
-##########################################
-output "ebs_volume_details" {
-  value = {
-    for vid, v in local.selected : vid => {
-      instance_id    = try(v.attachments[0].instance_id, null)
-      device         = try(v.attachments[0].device, null)
-      size_gib       = v.size
-      volume_type    = v.type
-      iops           = try(v.iops, null)
-      throughput_mb  = try(v.throughput, null)
-      az             = v.availability_zone
-      encrypted      = v.encrypted
-      state          = v.state
-      # Tags is a map already on this data source
-      name           = try(v.tags["Name"], null)
-      tags           = try(v.tags, null)
-    }
-  }
-}
+ Error: Unsupported attribute
+│
+│   on main.tf line 44, in locals:
+│   44:       for a in v.attachments : a.instance_id
+│
+│ This object does not have an attribute named "attachments".
+╵
