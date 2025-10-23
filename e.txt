@@ -1,19 +1,62 @@
-# Edit the list below to your target instances
-INSTANCES="i-0123456789abcdef0 i-0fedcba9876543210"
+##########################################
+# 1) Provide the list of EC2 instance IDs
+##########################################
+variable "instance_ids" {
+  type        = list(string)
+  description = "EC2 instance IDs whose attached EBS volumes you want to inspect"
+  default     = [
+    "i-0123456789abcdef0",
+    "i-0fedcba9876543210"
+  ]
+}
 
-aws ec2 describe-volumes \
-  --filters Name=attachment.instance-id,Values=$(echo $INSTANCES) \
-  --query 'Volumes[].{
-    InstanceId: Attachments[0].InstanceId,
-    Device: Attachments[0].Device,
-    VolumeId: VolumeId,
-    SizeGiB: Size,
-    Type: VolumeType,
-    IOPS: Iops,
-    ThroughputMBps: Throughput,
-    AZ: AvailabilityZone,
-    Encrypted: Encrypted,
-    State: State,
-    Name: Tags[?Key==`Name`]|[0].Value
-  }' \
-  --output table
+##########################################
+# 2) Get all EBS volumes in the region
+##########################################
+data "aws_ebs_volumes" "all" {}
+
+##########################################
+# 3) Filter to only those attached to our instances
+##########################################
+locals {
+  selected_volumes = toset([
+    for id in data.aws_ebs_volumes.all.ids : id
+    if length([
+      for a in (data.aws_ebs_volume.all[id].attachments) :
+      a.instance_id
+      if contains(var.instance_ids, a.instance_id)
+    ]) > 0
+  ])
+}
+
+##########################################
+# 4) Describe each volume in the filtered list
+##########################################
+data "aws_ebs_volume" "all" {
+  for_each = toset(data.aws_ebs_volumes.all.ids)
+  volume_id = each.value
+}
+
+##########################################
+# 5) Output useful details per volume
+##########################################
+output "ebs_volume_details" {
+  value = {
+    for vol_id in local.selected_volumes : vol_id => {
+      instance_id      = data.aws_ebs_volume.all[vol_id].attachments[0].instance_id
+      device           = data.aws_ebs_volume.all[vol_id].attachments[0].device
+      size_gib         = data.aws_ebs_volume.all[vol_id].size
+      volume_type      = data.aws_ebs_volume.all[vol_id].type
+      iops             = data.aws_ebs_volume.all[vol_id].iops
+      throughput_mb    = try(data.aws_ebs_volume.all[vol_id].throughput, null)
+      az               = data.aws_ebs_volume.all[vol_id].availability_zone
+      encrypted        = data.aws_ebs_volume.all[vol_id].encrypted
+      state            = data.aws_ebs_volume.all[vol_id].state
+      name             = lookup(
+        { for t in data.aws_ebs_volume.all[vol_id].tags : t.key => t.value },
+        "Name",
+        null
+      )
+    }
+  }
+}
