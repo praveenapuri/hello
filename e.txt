@@ -1,3 +1,19 @@
-aws ec2 describe-instance-types \
-  --instance-types m7i.4xlarge c7i.8xlarge r7i.4xlarge \
-  --query 'InstanceTypes[].{Type:InstanceType,Ebs:EbsInfo.EbsOptimizedInfo}'
+# Edit the list below to your target instances
+INSTANCES="i-0123456789abcdef0 i-0fedcba9876543210"
+
+aws ec2 describe-volumes \
+  --filters Name=attachment.instance-id,Values=$(echo $INSTANCES) \
+  --query 'Volumes[].{
+    InstanceId: Attachments[0].InstanceId,
+    Device: Attachments[0].Device,
+    VolumeId: VolumeId,
+    SizeGiB: Size,
+    Type: VolumeType,
+    IOPS: Iops,
+    ThroughputMBps: Throughput,
+    AZ: AvailabilityZone,
+    Encrypted: Encrypted,
+    State: State,
+    Name: Tags[?Key==`Name`]|[0].Value
+  }' \
+  --output table
