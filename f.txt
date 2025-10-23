@@ -1,11 +1,15 @@
-aws service-quotas list-service-quotas \
-  --service-code ebs \
+aws ec2 describe-volumes \
+  --filters Name=volume-type,Values=io2 \
   --region us-east-1 \
-  --query "Quotas[?contains(QuotaName, 'io2') && contains(QuotaName, 'storage')].[QuotaName,Value]" \
-  --output table
+  --query "sum(Volumes[].Size)"
 
 
-SSL validation failed for https://servicequotas.us-east-1.amazonaws.com/ [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1000)
+LIMIT=$(aws service-quotas list-service-quotas --service-code ebs --region us-east-1 \
+  --query "Quotas[?contains(QuotaName, 'io2') && contains(QuotaName, 'storage')].Value | [0]")
 
-aws --no-verify-ssl service-quotas list-service-quotas --service-code ebs --region us-east-1
+USAGE_GB=$(aws ec2 describe-volumes --filters Name=volume-type,Values=io2 \
+  --region us-east-1 --query "sum(Volumes[].Size)")
 
+USAGE_TB=$(echo "scale=2; $USAGE_GB/1024" | bc)
+
+echo "io2 Storage Usage: $USAGE_TB TiB / $LIMIT TiB allowed"
