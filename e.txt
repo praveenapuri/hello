@@ -8,7 +8,7 @@ terraform {
 }
 
 ##########################################
-# Provide your target EC2 instance IDs
+# Input: target EC2 instance IDs
 ##########################################
 variable "instance_ids" {
   type        = list(string)
@@ -20,35 +20,33 @@ variable "instance_ids" {
 }
 
 ##########################################
-# Use aws_ec2_instance to get block device mappings
+# 1) For each instance, list its attached EBS volume IDs
+#    via filter attachment.instance-id
 ##########################################
-data "aws_ec2_instance" "selected" {
-  for_each    = toset(var.instance_ids)
-  instance_id = each.value
+data "aws_ebs_volumes" "by_instance" {
+  for_each = toset(var.instance_ids)
+
+  filter {
+    name   = "attachment.instance-id"
+    values = [each.value]
+  }
 }
 
 ##########################################
-# Collect (InstanceId, DeviceName, VolumeId) triples
+# 2) Collect the unique set of volume IDs across all instances
 ##########################################
 locals {
-  attached = flatten([
-    for inst in data.aws_ec2_instance.selected : [
-      for bdm in inst.block_device_mappings : {
-        instance_id = inst.id
-        device      = bdm.device_name
-        volume_id   = bdm.ebs.volume_id
-      }
-    ]
-  ])
-
-  volume_ids = toset([for a in local.attached : a.volume_id])
+  all_volume_ids = toset(flatten([
+    for k, v in data.aws_ebs_volumes.by_instance : v.ids
+  ]))
 }
 
 ##########################################
-# Lookup each EBS volume by volume-id
+# 3) Fetch details for every volume ID
+#    (use filter name = "volume-id"; do NOT set volume_id directly)
 ##########################################
-data "aws_ebs_volume" "by_id" {
-  for_each = local.volume_ids
+data "aws_ebs_volume" "details" {
+  for_each = local.all_volume_ids
 
   filter {
     name   = "volume-id"
@@ -57,25 +55,18 @@ data "aws_ebs_volume" "by_id" {
 }
 
 ##########################################
-# Output one row per attachment with supported attributes
+# 4) Build output: InstanceId -> list of volume detail objects
+#    Only use attributes exposed by aws_ebs_volume data source.
 ##########################################
-output "ebs_volume_details" {
-  value = [
-    for a in local.attached : {
-      instance_id        = a.instance_id
-      device             = a.device
-      volume_id          = a.volume_id
-
-      size_gib           = data.aws_ebs_volume.by_id[a.volume_id].size
-      volume_type        = data.aws_ebs_volume.by_id[a.volume_id].volume_type
-      iops               = try(data.aws_ebs_volume.by_id[a.volume_id].iops, null)
-      throughput_mb      = try(data.aws_ebs_volume.by_id[a.volume_id].throughput, null)
-      availability_zone  = data.aws_ebs_volume.by_id[a.volume_id].availability_zone
-      encrypted          = data.aws_ebs_volume.by_id[a.volume_id].encrypted
-      multi_attach       = try(data.aws_ebs_volume.by_id[a.volume_id].multi_attach_enabled, null)
-      kms_key_id         = try(data.aws_ebs_volume.by_id[a.volume_id].kms_key_id, null)
-      name               = try(data.aws_ebs_volume.by_id[a.volume_id].tags["Name"], null)
-      tags               = try(data.aws_ebs_volume.by_id[a.volume_id].tags, null)
-    }
-  ]
-}
+locals {
+  volumes_by_instance = {
+    for inst_id, volset in data.aws_ebs_volumes.by_instance :
+    inst_id => [
+      for vid in volset.ids : {
+        volume_id         = vid
+        size_gib          = data.aws_ebs_volume.details[vid].size
+        volume_type       = data.aws_ebs_volume.details[vid].volume_type
+        iops              = try(data.aws_ebs_volume.details[vid].iops, null)
+        throughput_mb     = try(data.aws_ebs_volume.details[vid].throughput, null)
+        availability_zone = data.aws_ebs_volume.details[vid].availability_zone
+        encrypted         = data.aws_eb_
