@@ -1,173 +1,58 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = ">= 5.0"
-    }
-  }
-  backend "s3" {}
-}
+  # --- Split instances into Chronicle & Support/Rel vs Others ---
+  cs_instance_ids = toset([
+    for inst in values(data.aws_instance.instance_details) :
+    inst.id
+    if contains(lower(coalesce(inst.tags.Name, "")), "chronicle")
+      || contains(lower(coalesce(inst.tags.Name, "")), "chronicles")
+      || contains(lower(coalesce(inst.tags.Name, "")), "support")
+      || contains(lower(coalesce(inst.tags.Name, "")), "rel")
+  ])
 
-provider "aws" {
-  region = var.region
-}
-
-# -----------------------
-# EC2 instances discovery
-# -----------------------
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
-}
-
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
-
-# -----------------------
-# Variables
-# -----------------------
-variable "region" {
-  description = "AWS Region"
-  type        = string
-}
-
-variable "lambda_function_names" {
-  description = "List of Lambda function names to include in dashboard"
-  type        = list(string)
-}
-
-# -----------------------
-# Locals
-# -----------------------
-locals {
-  # extract Lambda names from var
-  lambda_function_names = var.lambda_function_names
-
-  # --- EC2 Metrics Generation ---
-  cpu_metrics = [
-    for instance in values(data.aws_instance.instance_details) : [
-      "AWS/EC2", "CPUUtilization", "InstanceId", instance.id,
-      { "label" : "CPU - ${coalesce(instance.tags.Name, instance.id)}" }
-    ]
-  ]
-  mem_metrics = [
-    for instance in values(data.aws_instance.instance_details) : [
-      "CWAgent", "mem_used_percent", "InstanceId", instance.id,
-      { "label" : "%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}" }
-    ]
-  ]
-  disk_metrics = [
-    for instance in values(data.aws_instance.instance_details) : [
-      "CWAgent", "disk_used_percent", "InstanceId", instance.id,
-      { "label": "%Disk - ${coalesce(instance.tags.Name, instance.id)}" }
-    ]
-  ]
-
-  all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
-  metrics_string = jsonencode(local.all_metrics)
-
-  # --- Lambda Metrics Generation ---
-  lambda_invocations = [
-    for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Invocations", "FunctionName", fn,
-      { "label": "Invocations - ${fn}" }
-    ]
-  ]
-  lambda_errors = [
-    for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Errors", "FunctionName", fn,
-      { "label": "Errors - ${fn}" }
-    ]
-  ]
-  lambda_duration = [
-    for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Duration", "FunctionName", fn,
-      { "label": "Duration - ${fn}" }
-    ]
-  ]
-  lambda_throttles = [
-    for fn in local.lambda_function_names : [
-      "AWS/Lambda", "Throttles", "FunctionName", fn,
-      { "label": "Throttles - ${fn}" }
-    ]
-  ]
-  lambda_concurrent = [
-    for fn in local.lambda_function_names : [
-      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn,
-      { "label": "Concurrent - ${fn}" }
-    ]
-  ]
-
-  all_lambda_metrics = concat(
-    local.lambda_invocations,
-    local.lambda_errors,
-    local.lambda_duration,
-    local.lambda_throttles,
-    local.lambda_concurrent
+  other_instance_ids = setsubtract(
+    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+    local.cs_instance_ids
   )
-  lambda_metrics_string = jsonencode(local.all_lambda_metrics)
 
-  # --- Dashboard JSON ---
-  final = <<-EOF
-{
-  "widgets" : [
-    {
-      "type"   : "metric",
-      "x": 0,
-      "y": 0,
-      "width" :12,
-      "height" : 6,
-      "properties" :
-      {
-        "metrics" : ${local.metrics_string},
-        "view": "gauge",
-        "region" :  "${var.region}",
-        "yAxis" : {
-          "left" : {
-            "min" : 2,
-            "max" : 100
-          }
-        },
-        "liveData": true,
-        "period": 300,
-        "title": "EC2-Health"
-      }
-    },
-    {
-      "type"   : "metric",
-      "x": 0,
-      "y": 7,
-      "width" :12,
-      "height" : 6,
-      "properties" :
-      {
-        "metrics" : ${local.lambda_metrics_string},
-        "view": "timeSeries",
-        "region" :  "${var.region}",
-        "period": 300,
-        "title": "Lambda-Health"
-      }
-    }
+  # Metrics for Chronicle & Support/Rel
+  cpu_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["AWS/EC2","CPUUtilization","InstanceId",instance.id,
+      {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.cs_instance_ids, instance.id)
   ]
-}
-EOF
-}
+  mem_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","mem_used_percent","InstanceId",instance.id,
+      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.cs_instance_ids, instance.id)
+  ]
+  disk_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","disk_used_percent","InstanceId",instance.id,
+      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.cs_instance_ids, instance.id)
+  ]
+  all_metrics_cs      = concat(local.cpu_metrics_cs, local.mem_metrics_cs, local.disk_metrics_cs)
+  metrics_string_cs   = jsonencode(local.all_metrics_cs)
 
-# -----------------------
-# Outputs
-# -----------------------
-output "raw_json_string" {
-  value = replace(local.final, "\n", " ")
-}
-
-# -----------------------
-# CloudWatch Dashboard
-# -----------------------
-resource "aws_cloudwatch_dashboard" "health" {
-  dashboard_name = "EC2-Lambda-Health-dev"
-  dashboard_body = local.final
-}
+  # Metrics for all other instances
+  cpu_metrics_other = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["AWS/EC2","CPUUtilization","InstanceId",instance.id,
+      {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.other_instance_ids, instance.id)
+  ]
+  mem_metrics_other = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","mem_used_percent","InstanceId",instance.id,
+      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.other_instance_ids, instance.id)
+  ]
+  disk_metrics_other = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","disk_used_percent","InstanceId",instance.id,
+      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.other_instance_ids, instance.id)
+  ]
+  all_metrics_other    = concat(local.cpu_metrics_other, local.mem_metrics_other, local.disk_metrics_other)
+  metrics_string_other = jsonencode(local.all_metrics_other)
