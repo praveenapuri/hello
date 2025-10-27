@@ -1,42 +1,12 @@
-# --- Disk metrics (Linux + Windows) for ALL instances ---
-# Linux: disk_used_percent  (Used %)
-# Windows: LogicalDisk % Free Space  (convert to Used % = 100 - Free %)
-disk_metrics = [
-  # Linux used%
-  [
+"annotations": {
+  "horizontal": [
     {
-      expression = "SEARCH('{CWAgent} MetricName=\"disk_used_percent\"', 'Average', 300)"
-      id         = "linux_used_all"
-      label      = "Disk Used % (Linux)"
-    }
-  ],
-  [
-    {
-      expression = "AVG(METRICS())"
-      id         = "linux_used"
-      label      = "Disk Used % (Linux)"
-    }
-  ],
-
-  # Windows used% = 100 - Free%
-  [
-    {
-      expression = "SEARCH('{CWAgent} MetricName=\"LogicalDisk % Free Space\"', 'Average', 300)"
-      id         = "win_free_all"
-      label      = "Disk Free % (Windows)"
-    }
-  ],
-  [
-    {
-      expression = "100 - AVG(METRICS())"
-      id         = "win_used"
-      label      = "Disk Used % (Windows)"
+      "label": "75% Used Threshold",
+      "value": 75,
+      "color": "#d13212",
+      "fill": "above"
     }
   ]
-]
+}
 
-# --- Disk metrics (Linux + Windows) for Chronicle & Support/Rel set ---
-disk_metrics_cs = local.disk_metrics
 
-# --- Disk metrics (Linux + Windows) for all OTHER instances ---
-disk_metrics_other = local.disk_metrics
