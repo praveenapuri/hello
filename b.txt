@@ -8,21 +8,17 @@ terraform {
   }
 }
 
-########################################
-# Variables for non-EC2 widgets you used
-########################################
 variable "region" {
   type    = string
   default = "us-east-1"
 }
 
-# Lambda: list the function names you want on the dashboard
+# Non-EC2 widget inputs (customize as needed)
 variable "lambda_function_names" {
   type    = list(string)
   default = []
 }
 
-# EFS & FSx: list the file system IDs to chart (kept from your attached file)
 variable "efs_file_system_ids" {
   type    = list(string)
   default = []
@@ -33,9 +29,7 @@ variable "fsx_file_system_ids" {
   default = []
 }
 
-########################################
-# EC2 discovery
-########################################
+# ---- Discover instances (running/pending) ----
 data "aws_instances" "monitored_instances" {
   filter {
     name   = "instance-state-name"
@@ -48,17 +42,14 @@ data "aws_instance" "instance_details" {
   instance_id = each.key
 }
 
-########################################
-# Locals: groupings, metric arrays, widgets
-########################################
+# ---------------- Locals: grouping + per-instance metrics ----------------
 locals {
-  # Pretty names by instance
   name_of = {
     for inst in values(data.aws_instance.instance_details) :
     inst.id => try(inst.tags.Name, inst.id)
   }
 
-  # Group by Name tag (case-insensitive) — Chronicle, Support, Rel
+  # Group by Name tag (case-insensitive)
   chronicle_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
     if length(regexall("(\\bchronicle\\b|\\bchronicles\\b)", lower(lookup(inst.tags, "Name", "")))) > 0
@@ -76,11 +67,8 @@ locals {
   csr_ids   = setunion(local.chronicle_ids, local.support_ids, local.rel_ids)
   other_ids = setsubtract(local.all_ids, local.csr_ids)
 
-  ############################################
-  # Per-instance metrics (EC2 windows)
-  ############################################
-
-  # CPU – AWS/EC2
+  # ---------------- Per-instance series (NO combining across instances) ----------------
+  # CPU (EC2)
   cpu_csr = [
     for iid in local.csr_ids : [
       "AWS/EC2","CPUUtilization","InstanceId",iid,
@@ -94,8 +82,8 @@ locals {
     ]
   ]
 
-  # Memory Used % – CWAgent
-  # Linux
+  # Memory Used % (CWAgent)
+  # Linux: Mem Used % per instance
   mem_linux_csr = [
     for iid in local.csr_ids : [
       "CWAgent","mem_used_percent","InstanceId",iid,
@@ -108,7 +96,8 @@ locals {
       { label = "Mem Used % (Linux) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
-  # Windows
+
+  # Windows: Mem Used % per instance (already a *used* percentage)
   mem_windows_csr = [
     for iid in local.csr_ids : [
       "CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,
@@ -122,8 +111,8 @@ locals {
     ]
   ]
 
-  # Disk Used % – CWAgent
-  # Linux: disk_used_percent (already "Used %")
+  # Disk Used % (CWAgent)
+  # Linux: one tile per instance (CloudWatch aggregates within the instance because only InstanceId is specified)
   disk_linux_csr = [
     for iid in local.csr_ids : [
       "CWAgent","disk_used_percent","InstanceId",iid,
@@ -136,7 +125,8 @@ locals {
       { label = "Disk Used % (Linux) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
-  # Windows: Used % = 100 − LogicalDisk % Free Space
+
+  # Windows: per-instance tile via metric math (Used % = 100 - Free %)
   disk_win_csr = flatten([
     for idx, iid in tolist(local.csr_ids) : [
       [
@@ -144,7 +134,8 @@ locals {
         { id = "wfree_${replace(iid,"-","")}_${idx}", label = "Disk Free % (Windows) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
       ],
       [
-        { expression = format("100 - %s", "wfree_${replace(iid,"-","")}_${idx}"), id = "wused_${replace(iid,"-","")}_${idx}", label = "Disk Used % (Windows) - ${lookup(local.name_of, iid, iid)}", period = 300 }
+        { expression = format("100 - %s", "wfree_${replace(iid,"-","")}_${idx}"),
+          id = "wused_${replace(iid,"-","")}_${idx}", label = "Disk Used % (Windows) - ${lookup(local.name_of, iid, iid)}", period = 300 }
       ]
     ]
   ])
@@ -155,20 +146,26 @@ locals {
         { id = "wfree_${replace(iid,"-","")}_${idx}", label = "Disk Free % (Windows) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
       ],
       [
-        { expression = format("100 - %s", "wfree_${replace(iid,"-","")}_${idx}"), id = "wused_${replace(iid,"-","")}_${idx}", label = "Disk Used % (Windows) - ${lookup(local.name_of, iid, iid)}", period = 300 }
+        { expression = format("100 - %s", "wfree_${replace(iid,"-","")}_${idx}"),
+          id = "wused_${replace(iid,"-","")}_${idx}", label = "Disk Used % (Windows) - ${lookup(local.name_of, iid, iid)}", period = 300 }
       ]
     ]
   ])
 
-  # Final metric lists per EC2 window
-  metrics_csr = concat(local.cpu_csr,   local.mem_linux_csr,   local.mem_windows_csr,   local.disk_linux_csr,   local.disk_win_csr)
-  metrics_other = concat(local.cpu_other, local.mem_linux_other, local.mem_windows_other, local.disk_linux_other, local.disk_win_other)
+  # Final metric lists per window (each series = one instance tile)
+  metrics_csr = concat(
+    local.cpu_csr,
+    local.mem_linux_csr, local.mem_windows_csr,
+    local.disk_linux_csr, local.disk_win_csr
+  )
 
-  ############################################
-  # Non-EC2 widgets (kept/restored)
-  ############################################
+  metrics_other = concat(
+    local.cpu_other,
+    local.mem_linux_other, local.mem_windows_other,
+    local.disk_linux_other, local.disk_win_other
+  )
 
-  # ---- Lambda (Invocations, Errors, Duration, Throttles, ConcurrentExecutions)
+  # ---------------- Non-EC2 widgets ----------------
   lambda_invocations = [
     for fn in var.lambda_function_names : [
       "AWS/Lambda","Invocations","FunctionName",fn,
@@ -201,7 +198,6 @@ locals {
   ]
   lambda_all_metrics = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
 
-  # ---- EFS (PercentIOLimit, StorageBytes)
   efs_percent_io = [
     for id in var.efs_file_system_ids : [
       "AWS/EFS","PercentIOLimit","FileSystemId",id,
@@ -216,7 +212,6 @@ locals {
   ]
   efs_all_metrics = concat(local.efs_percent_io, local.efs_storage)
 
-  # ---- FSx (StorageCapacityUtilization) — simple, % utilization
   fsx_capacity_util = [
     for id in var.fsx_file_system_ids : [
       "AWS/FSx","StorageCapacityUtilization","FileSystemId",id,
@@ -224,7 +219,6 @@ locals {
     ]
   ]
 
-  # ---- NLB Health (ActiveFlowCount, RejectedFlowCount) using SEARCH
   nlb_metrics_search = [
     [
       { expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"ActiveFlowCount\"', 'Sum', 300)", id = "nlb_active" }
@@ -234,7 +228,6 @@ locals {
     ]
   ]
 
-  # ---- ALB Health (RequestCount, HTTPCode_ELB_4XX_Count, HTTPCode_ELB_5XX_Count)
   alb_metrics_search = [
     [
       { expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"RequestCount\"', 'Sum', 300)", id = "alb_req" }
@@ -247,7 +240,6 @@ locals {
     ]
   ]
 
-  # ---- ALB TargetGroup (3XX/4XX/5XX, TargetResponseTime)
   alb_tg_metrics_search = [
     [
       { expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer,TargetGroup} MetricName=\"HTTPCode_Target_3XX_Count\"', 'Sum', 300)", id = "tg_3xx", color = "#FFD700" }
@@ -263,37 +255,33 @@ locals {
     ]
   ]
 
-  # ---- EBS: show average read & write latency (ms) via metric math SEARCH
-  #   ReadLatency(ms)  = SUM(VolumeTotalReadTime)  / SUM(VolumeReadOps)  * 1000
-  #   WriteLatency(ms) = SUM(VolumeTotalWriteTime) / SUM(VolumeWriteOps) * 1000
+  # EBS read/write latency (ms)
   ebs_latency_search = [
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)", id = "ebs_rt", label = "helper: TotalReadTime",  visible = false }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)", id = "ebs_rt", visible = false }
     ],
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)", id = "ebs_ro", label = "helper: ReadOps",        visible = false }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)", id = "ebs_ro", visible = false }
     ],
     [
       { expression = "IF(SUM(ebs_ro)>0, (SUM(ebs_rt)/SUM(ebs_ro))*1000, 0)", id = "ebs_read_ms", label = "EBS Avg Read Latency (ms)" }
     ],
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalWriteTime\"', 'Sum', 300)", id = "ebs_wt", label = "helper: TotalWriteTime", visible = false }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalWriteTime\"', 'Sum', 300)", id = "ebs_wt", visible = false }
     ],
     [
-      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeWriteOps\"', 'Sum', 300)", id = "ebs_wo", label = "helper: WriteOps",       visible = false }
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeWriteOps\"', 'Sum', 300)", id = "ebs_wo", visible = false }
     ],
     [
       { expression = "IF(SUM(ebs_wo)>0, (SUM(ebs_wt)/SUM(ebs_wo))*1000, 0)", id = "ebs_write_ms", label = "EBS Avg Write Latency (ms)" }
     ]
   ]
 
-  ############################################
-  # DASHBOARD: two EC2 windows + non-EC2 panels
-  ############################################
+  # ---------------- Dashboard object ----------------
   dashboard_obj = {
     widgets = [
 
-      # --- Window 1: Chronicle + Support + Rel (CPU, Mem, Disk)
+      # Window 1: CSR (per-instance tiles)
       {
         type       = "metric"
         x          = 0
@@ -316,7 +304,7 @@ locals {
         }
       },
 
-      # --- Window 2: Other instances (CPU, Mem, Disk)
+      # Window 2: Other instances (per-instance tiles)
       {
         type       = "metric"
         x          = 0
@@ -339,7 +327,7 @@ locals {
         }
       },
 
-      # --- Lambda panel (time series)
+      # Lambda
       {
         type       = "metric"
         x          = 0
@@ -356,7 +344,7 @@ locals {
         }
       },
 
-      # --- EFS panel
+      # EFS
       {
         type       = "metric"
         x          = 12
@@ -373,7 +361,7 @@ locals {
         }
       },
 
-      # --- FSx panel
+      # FSx
       {
         type       = "metric"
         x          = 0
@@ -390,7 +378,7 @@ locals {
         }
       },
 
-      # --- NLB Health (Active/Rejected flows)
+      # NLB
       {
         type       = "metric"
         x          = 12
@@ -407,7 +395,7 @@ locals {
         }
       },
 
-      # --- ALB Health (LB level)
+      # ALB (LB-level)
       {
         type       = "metric"
         x          = 0
@@ -424,7 +412,7 @@ locals {
         }
       },
 
-      # --- ALB TargetGroup HTTP & Latency
+      # ALB TargetGroup
       {
         type       = "metric"
         x          = 12
@@ -441,7 +429,7 @@ locals {
         }
       },
 
-      # --- EBS Latency (ms)
+      # EBS latency
       {
         type       = "metric"
         x          = 0
@@ -461,9 +449,6 @@ locals {
   }
 }
 
-########################################
-# CloudWatch Dashboard
-########################################
 resource "aws_cloudwatch_dashboard" "health" {
   dashboard_name = "EPIC-Infra-Health"
   dashboard_body = jsonencode(local.dashboard_obj)
