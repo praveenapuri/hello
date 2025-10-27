@@ -51,3 +51,52 @@ locals {
   disk_metrics_csr   = concat(local.disk_linux_csr,   local.disk_win_csr)
   disk_metrics_other = concat(local.disk_linux_other, local.disk_win_other)
 }
+
+
+
+# Window 1: CSR disk tiles (one per instance)
+{
+  type       = "metric"
+  x          = 0
+  y          = 0
+  width      = 24
+  height     = 3
+  properties = {
+    title   = "EC2 Disk Used % – Chronicle + Support + Rel"
+    region  = var.region
+    view    = "singleValue"
+    stat    = "Average"
+    period  = 300
+    yAxis   = { left = { min = 0, max = 100 } }
+    metrics = local.disk_metrics_csr
+    annotations = {
+      horizontal = [
+        { label = "75% Used Threshold", value = 75, color = "#d13212", fill = "above" }
+      ]
+    }
+  }
+},
+
+# Window 2: Other disk tiles (one per instance)
+{
+  type       = "metric"
+  x          = 0
+  y          = 3
+  width      = 24
+  height     = 3
+  properties = {
+    title   = "EC2 Disk Used % – Other Instances"
+    region  = var.region
+    view    = "singleValue"
+    stat    = "Average"
+    period  = 300
+    yAxis   = { left = { min = 0, max = 100 } }
+    metrics = local.disk_metrics_other
+    annotations = {
+      horizontal = [
+        { label = "75% Used Threshold", value = 75, color = "#d13212", fill = "above" }
+      ]
+    }
+  }
+}
+
