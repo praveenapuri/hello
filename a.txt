@@ -47,6 +47,63 @@ locals {
   all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
   metrics_string = jsonencode(local.all_metrics)
 
+  # --- Split instances into Chronicle & Support/Rel vs Others ---
+  cs_instance_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(
+      regexall("(chronicle|chronicles|support|\\brel\\b)", lower(lookup(inst.tags, "Name", "")))
+    ) > 0
+  ])
+
+  other_instance_ids = setsubtract(
+    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+    local.cs_instance_ids
+  )
+
+  # Metrics for Chronicle & Support/Rel
+  cpu_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["AWS/EC2","CPUUtilization","InstanceId",instance.id,
+      {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.cs_instance_ids, instance.id)
+  ]
+  mem_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","mem_used_percent","InstanceId",instance.id,
+      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.cs_instance_ids, instance.id)
+  ]
+  disk_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","disk_used_percent","InstanceId",instance.id,
+      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.cs_instance_ids, instance.id)
+  ]
+  all_metrics_cs      = concat(local.cpu_metrics_cs, local.mem_metrics_cs, local.disk_metrics_cs)
+  metrics_string_cs   = jsonencode(local.all_metrics_cs)
+
+  # Metrics for all other instances
+  cpu_metrics_other = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["AWS/EC2","CPUUtilization","InstanceId",instance.id,
+      {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.other_instance_ids, instance.id)
+  ]
+  mem_metrics_other = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","mem_used_percent","InstanceId",instance.id,
+      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.other_instance_ids, instance.id)
+  ]
+  disk_metrics_other = [
+    for instance in values(data.aws_instance.instance_details) :
+    ["CWAgent","disk_used_percent","InstanceId",instance.id,
+      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
+    if contains(local.other_instance_ids, instance.id)
+  ]
+  all_metrics_other    = concat(local.cpu_metrics_other, local.mem_metrics_other, local.disk_metrics_other)
+  metrics_string_other = jsonencode(local.all_metrics_other)
+
   # --- Lambda Metrics Generation (UNCHANGED) ---
   lambda_invocations = [
     for fn in local.lambda_function_names : [
@@ -245,25 +302,35 @@ locals {
 {
   "widgets" : [
     {
-      "type"   : "metric",
+      "type": "metric",
       "x": 0,
       "y": 0,
-      "width" :12,
-      "height" : 6,
-      "properties" :
-      {
-        "metrics" : ${local.metrics_string},
+      "width": 12,
+      "height": 3,
+      "properties": {
+        "metrics": ${local.metrics_string_cs},
         "view": "gauge",
-        "region" :  "${var.region}",
-        "yAxis" : {
-          "left" : {
-            "min" : 2,
-            "max" : 100
-          }
-        },
+        "region": "${var.region}",
+        "yAxis": { "left": { "min": 2, "max": 100 } },
         "liveData": true,
         "period": 300,
-        "title": "EC2-Health"
+        "title": "EC2-Health : Chronicle & Support/Rel"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 3,
+      "width": 12,
+      "height": 3,
+      "properties": {
+        "metrics": ${local.metrics_string_other},
+        "view": "gauge",
+        "region": "${var.region}",
+        "yAxis": { "left": { "min": 2, "max": 100 } },
+        "liveData": true,
+        "period": 300,
+        "title": "EC2-Health : Other Instances"
       }
     },
     {
