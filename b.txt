@@ -1,4 +1,23 @@
-  # --- Split instances into Chronicle & Support/Rel vs Others ---
+# --- Split instances into Chronicle & Support/Rel vs Others ---
+# NOTE: substring match on tags.Name using regexall(); case-insensitive via lower()
+locals {
+  cs_instance_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(
+      regexall("(chronicle|chronicles|support|\\brel\\b)", lower(lookup(inst.tags, "Name", "")))
+    ) > 0
+  ])
+
+  other_instance_ids = setsubtract(
+    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+    local.cs_instance_ids
+  )
+}
+
+
+
+
+# --- Split instances into Chronicle & Support/Rel vs Others ---
   cs_instance_ids = toset([
     for inst in values(data.aws_instance.instance_details) :
     inst.id
