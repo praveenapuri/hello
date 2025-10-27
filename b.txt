@@ -1,24 +1,42 @@
-"metrics": [
+# --- Disk metrics (Linux + Windows) for ALL instances ---
+# Linux: disk_used_percent  (Used %)
+# Windows: LogicalDisk % Free Space  (convert to Used % = 100 - Free %)
+disk_metrics = [
+  # Linux used%
   [
-    { "expression": "SEARCH('{CWAgent} MetricName=\"disk_used_percent\"', 'Average', 300)", "id": "linux_used_all" }
+    {
+      expression = "SEARCH('{CWAgent} MetricName=\"disk_used_percent\"', 'Average', 300)"
+      id         = "linux_used_all"
+      label      = "Disk Used % (Linux)"
+    }
   ],
   [
-    { "expression": "100 - AVG(METRICS())", "label": "Linux Free %", "id": "linux_free", "period": 300 }
+    {
+      expression = "AVG(METRICS())"
+      id         = "linux_used"
+      label      = "Disk Used % (Linux)"
+    }
+  ],
+
+  # Windows used% = 100 - Free%
+  [
+    {
+      expression = "SEARCH('{CWAgent} MetricName=\"LogicalDisk % Free Space\"', 'Average', 300)"
+      id         = "win_free_all"
+      label      = "Disk Free % (Windows)"
+    }
   ],
   [
-    { "expression": "SEARCH('{CWAgent} MetricName=\"LogicalDisk % Free Space\"', 'Average', 300)", "id": "win_free_all" }
-  ],
-  [
-    { "expression": "AVG(METRICS())", "label": "Windows Free %", "id": "win_free", "period": 300 }
-  ],
-  [
-    { "expression": "IF(linux_free, linux_free, 0) + IF(win_free, win_free, 0)", "label": "Free % (All Disks)", "id": "free_all", "period": 300 }
+    {
+      expression = "100 - AVG(METRICS())"
+      id         = "win_used"
+      label      = "Disk Used % (Windows)"
+    }
   ]
 ]
 
+# --- Disk metrics (Linux + Windows) for Chronicle & Support/Rel set ---
+disk_metrics_cs = local.disk_metrics
 
-"annotations": {
-  "horizontal": [
-    { "label": "25% free threshold", "value": 25, "color": "#d13212", "fill": "below" }
-  ]
-}
+# --- Disk metrics (Linux + Windows) for all OTHER instances ---
+disk_metrics_other = local.disk_metrics
