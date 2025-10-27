@@ -1,74 +1,139 @@
-# ----- Disk Used % (Linux, per filesystem & instance) -----
-# Uses CWAgent "disk_used_percent" — already "used %"
 locals {
-  disk_metrics_linux = [
-    # One tile per filesystem series (InstanceId+device+path)
-    [
-      {
-        expression = "SEARCH('{CWAgent,InstanceId,device,path} MetricName=\"disk_used_percent\"', 'Average', 300)"
-        id         = "linux_disk_used_all"
-        label      = "Disk Used % (Linux)"
-        period     = 300
-      }
+  # Map instance id -> pretty name
+  name_of = { for inst in values(data.aws_instance.instance_details) :
+    inst.id => try(inst.tags.Name, inst.id)
+  }
+
+  # Grouping by Name tag (case-insensitive)
+  chronicle_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(regexall("(\\bchronicle\\b|\\bchronicles\\b)", lower(lookup(inst.tags, "Name", "")))) > 0
+  ])
+  support_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(regexall("\\bsupport\\b", lower(lookup(inst.tags, "Name", "")))) > 0
+  ])
+  rel_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(regexall("\\brel\\b", lower(lookup(inst.tags, "Name", "")))) > 0
+  ])
+
+  # CSR = Chronicle ∪ Support ∪ Rel
+  csr_ids   = setunion(local.chronicle_ids, local.support_ids, local.rel_ids)
+  all_ids   = toset([for inst in values(data.aws_instance.instance_details) : inst.id])
+  other_ids = setsubtract(local.all_ids, local.csr_ids)
+
+  # ----- Metric builders (per-instance series) -----
+
+  # Linux DISK used %
+  _disk_linux_metrics = function(inst_ids) => [
+    for iid in inst_ids : [
+      "CWAgent","disk_used_percent","InstanceId",iid,
+      { "label" = "Disk Used % (Linux) - ${lookup(local.name_of, iid, iid)}", "stat" = "Average", "period" = 300 }
     ]
   ]
 
-  # ----- Disk Used % (Windows, per logical disk & instance) -----
-  # Windows agent publishes "LogicalDisk % Free Space" => convert to Used % = 100 - Free
-  disk_metrics_windows = [
-    [
-      {
-        expression = "SEARCH('{CWAgent} MetricName=\"LogicalDisk % Free Space\"', 'Average', 300)"
-        id         = "win_disk_free_all"
-        label      = "Disk Free % (Windows)"
-        period     = 300
-      }
-    ],
-    [
-      {
-        expression = "100 - METRICS()"
-        id         = "win_disk_used_all"
-        label      = "Disk Used % (Windows)"
-        period     = 300
-      }
+  # Windows DISK used % = 100 - "LogicalDisk % Free Space"
+  _disk_windows_metrics = function(inst_ids) => flatten([
+    for idx, iid in tolist(inst_ids) : [
+      [
+        "CWAgent","LogicalDisk % Free Space","InstanceId",iid,
+        { "id" = "wfree_${replace(iid, "-", "")}_${idx}", "label" = "Disk Free % (Windows) - ${lookup(local.name_of, iid, iid)}", "stat" = "Average", "period" = 300 }
+      ],
+      [
+        { "expression" = "100 - ${"wfree_${replace(iid, "-", "")}_${idx}"}",
+          "id" = "wused_${replace(iid, "-", "")}_${idx}",
+          "label" = "Disk Used % (Windows) - ${lookup(local.name_of, iid, iid)}",
+          "period" = 300
+        }
+      ]
+    ]
+  ])
+
+  # Linux MEM used %
+  _mem_linux_metrics = function(inst_ids) => [
+    for iid in inst_ids : [
+      "CWAgent","mem_used_percent","InstanceId",iid,
+      { "label" = "Mem Used % (Linux) - ${lookup(local.name_of, iid, iid)}", "stat" = "Average", "period" = 300 }
     ]
   ]
 
-  # ----- Memory Used % (Linux, per instance) -----
-  mem_metrics_linux = [
-    [
-      {
-        expression = "SEARCH('{CWAgent,InstanceId} MetricName=\"mem_used_percent\"', 'Average', 300)"
-        id         = "linux_mem_used_all"
-        label      = "Mem Used % (Linux)"
-        period     = 300
-      }
+  # Windows MEM used %
+  _mem_windows_metrics = function(inst_ids) => [
+    for iid in inst_ids : [
+      "CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,
+      { "label" = "Mem Used % (Windows) - ${lookup(local.name_of, iid, iid)}", "stat" = "Average", "period" = 300 }
     ]
   ]
 
-  # ----- Memory Used % (Windows, per instance) -----
-  # Windows agent publishes "Memory % Committed Bytes In Use" (already "used %")
-  mem_metrics_windows = [
-    [
-      {
-        expression = "SEARCH('{CWAgent} MetricName=\"Memory % Committed Bytes In Use\"', 'Average', 300)"
-        id         = "win_mem_used_all"
-        label      = "Mem Used % (Windows)"
-        period     = 300
-      }
-    ]
-  ]
+  # ----- Final metric arrays per window -----
+  disk_metrics_csr   = concat(local._disk_linux_metrics(local.csr_ids),   local._disk_windows_metrics(local.csr_ids))
+  mem_metrics_csr    = concat(local._mem_linux_metrics(local.csr_ids),    local._mem_windows_metrics(local.csr_ids))
+  disk_metrics_other = concat(local._disk_linux_metrics(local.other_ids), local._disk_windows_metrics(local.other_ids))
+  mem_metrics_other  = concat(local._mem_linux_metrics(local.other_ids),  local._mem_windows_metrics(local.other_ids))
 
-  # If your code expects disk_metrics_cs/other and mem_metrics_cs/other locals, point them here:
-  disk_metrics_cs    = concat(local.disk_metrics_linux, local.disk_metrics_windows)
-  disk_metrics_other = concat(local.disk_metrics_linux, local.disk_metrics_windows)
-  mem_metrics_cs     = concat(local.mem_metrics_linux,  local.mem_metrics_windows)
-  mem_metrics_other  = concat(local.mem_metrics_linux,  local.mem_metrics_windows)
+  metrics_string_disk_csr   = jsonencode(local.disk_metrics_csr)
+  metrics_string_mem_csr    = jsonencode(local.mem_metrics_csr)
+  metrics_string_disk_other = jsonencode(local.disk_metrics_other)
+  metrics_string_mem_other  = jsonencode(local.mem_metrics_other)
 }
 
 
-"annotations": {
-  "horizontal": [
-    { "label": "75% Used Threshold", "value": 75, "color": "#d13212", "fill": "above" }
-  ]
+
+{
+  "type": "metric",
+  "x": 0, "y": 0, "width": 12, "height": 3,
+  "properties": {
+    "title": "EC2-Health : Chronicle + Support + Rel (Disk)",
+    "region": "${var.region}",
+    "view": "singleValue",
+    "stat": "Average",
+    "period": 300,
+    "yAxis": { "left": { "min": 0, "max": 100 } },
+    "metrics": ${local.metrics_string_disk_csr},
+    "annotations": { "horizontal": [ { "label": "75% Used Threshold", "value": 75, "color": "#d13212", "fill": "above" } ] }
+  }
+},
+{
+  "type": "metric",
+  "x": 0, "y": 3, "width": 12, "height": 3,
+  "properties": {
+    "title": "EC2-Health : Chronicle + Support + Rel (Memory)",
+    "region": "${var.region}",
+    "view": "singleValue",
+    "stat": "Average",
+    "period": 300,
+    "yAxis": { "left": { "min": 0, "max": 100 } },
+    "metrics": ${local.metrics_string_mem_csr},
+    "annotations": { "horizontal": [ { "label": "75% Used Threshold", "value": 75, "color": "#d13212", "fill": "above" } ] }
+  }
+},
+
+{
+  "type": "metric",
+  "x": 12, "y": 0, "width": 12, "height": 3,
+  "properties": {
+    "title": "EC2-Health : Other Instances (Disk)",
+    "region": "${var.region}",
+    "view": "singleValue",
+    "stat": "Average",
+    "period": 300,
+    "yAxis": { "left": { "min": 0, "max": 100 } },
+    "metrics": ${local.metrics_string_disk_other},
+    "annotations": { "horizontal": [ { "label": "75% Used Threshold", "value": 75, "color": "#d13212", "fill": "above" } ] }
+  }
+},
+{
+  "type": "metric",
+  "x": 12, "y": 3, "width": 12, "height": 3,
+  "properties": {
+    "title": "EC2-Health : Other Instances (Memory)",
+    "region": "${var.region}",
+    "view": "singleValue",
+    "stat": "Average",
+    "period": 300,
+    "yAxis": { "left": { "min": 0, "max": 100 } },
+    "metrics": ${local.metrics_string_mem_other},
+    "annotations": { "horizontal": [ { "label": "75% Used Threshold", "value": 75, "color": "#d13212", "fill": "above" } ] }
+  }
 }
