@@ -1,12 +1,74 @@
-"annotations": {
-  "horizontal": [
-    {
-      "label": "75% Used Threshold",
-      "value": 75,
-      "color": "#d13212",
-      "fill": "above"
-    }
+# ----- Disk Used % (Linux, per filesystem & instance) -----
+# Uses CWAgent "disk_used_percent" — already "used %"
+locals {
+  disk_metrics_linux = [
+    # One tile per filesystem series (InstanceId+device+path)
+    [
+      {
+        expression = "SEARCH('{CWAgent,InstanceId,device,path} MetricName=\"disk_used_percent\"', 'Average', 300)"
+        id         = "linux_disk_used_all"
+        label      = "Disk Used % (Linux)"
+        period     = 300
+      }
+    ]
   ]
+
+  # ----- Disk Used % (Windows, per logical disk & instance) -----
+  # Windows agent publishes "LogicalDisk % Free Space" => convert to Used % = 100 - Free
+  disk_metrics_windows = [
+    [
+      {
+        expression = "SEARCH('{CWAgent} MetricName=\"LogicalDisk % Free Space\"', 'Average', 300)"
+        id         = "win_disk_free_all"
+        label      = "Disk Free % (Windows)"
+        period     = 300
+      }
+    ],
+    [
+      {
+        expression = "100 - METRICS()"
+        id         = "win_disk_used_all"
+        label      = "Disk Used % (Windows)"
+        period     = 300
+      }
+    ]
+  ]
+
+  # ----- Memory Used % (Linux, per instance) -----
+  mem_metrics_linux = [
+    [
+      {
+        expression = "SEARCH('{CWAgent,InstanceId} MetricName=\"mem_used_percent\"', 'Average', 300)"
+        id         = "linux_mem_used_all"
+        label      = "Mem Used % (Linux)"
+        period     = 300
+      }
+    ]
+  ]
+
+  # ----- Memory Used % (Windows, per instance) -----
+  # Windows agent publishes "Memory % Committed Bytes In Use" (already "used %")
+  mem_metrics_windows = [
+    [
+      {
+        expression = "SEARCH('{CWAgent} MetricName=\"Memory % Committed Bytes In Use\"', 'Average', 300)"
+        id         = "win_mem_used_all"
+        label      = "Mem Used % (Windows)"
+        period     = 300
+      }
+    ]
+  ]
+
+  # If your code expects disk_metrics_cs/other and mem_metrics_cs/other locals, point them here:
+  disk_metrics_cs    = concat(local.disk_metrics_linux, local.disk_metrics_windows)
+  disk_metrics_other = concat(local.disk_metrics_linux, local.disk_metrics_windows)
+  mem_metrics_cs     = concat(local.mem_metrics_linux,  local.mem_metrics_windows)
+  mem_metrics_other  = concat(local.mem_metrics_linux,  local.mem_metrics_windows)
 }
 
 
+"annotations": {
+  "horizontal": [
+    { "label": "75% Used Threshold", "value": 75, "color": "#d13212", "fill": "above" }
+  ]
+}
