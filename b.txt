@@ -1,77 +1,24 @@
-# --- Split instances into Chronicle & Support/Rel vs Others ---
-# NOTE: substring match on tags.Name using regexall(); case-insensitive via lower()
-locals {
-  cs_instance_ids = toset([
-    for inst in values(data.aws_instance.instance_details) : inst.id
-    if length(
-      regexall("(chronicle|chronicles|support|\\brel\\b)", lower(lookup(inst.tags, "Name", "")))
-    ) > 0
-  ])
+"metrics": [
+  [
+    { "expression": "SEARCH('{CWAgent} MetricName=\"disk_used_percent\"', 'Average', 300)", "id": "linux_used_all" }
+  ],
+  [
+    { "expression": "100 - AVG(METRICS())", "label": "Linux Free %", "id": "linux_free", "period": 300 }
+  ],
+  [
+    { "expression": "SEARCH('{CWAgent} MetricName=\"LogicalDisk % Free Space\"', 'Average', 300)", "id": "win_free_all" }
+  ],
+  [
+    { "expression": "AVG(METRICS())", "label": "Windows Free %", "id": "win_free", "period": 300 }
+  ],
+  [
+    { "expression": "IF(linux_free, linux_free, 0) + IF(win_free, win_free, 0)", "label": "Free % (All Disks)", "id": "free_all", "period": 300 }
+  ]
+]
 
-  other_instance_ids = setsubtract(
-    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
-    local.cs_instance_ids
-  )
+
+"annotations": {
+  "horizontal": [
+    { "label": "25% free threshold", "value": 25, "color": "#d13212", "fill": "below" }
+  ]
 }
-
-
-
-
-# --- Split instances into Chronicle & Support/Rel vs Others ---
-  cs_instance_ids = toset([
-    for inst in values(data.aws_instance.instance_details) :
-    inst.id
-    if contains(lower(coalesce(inst.tags.Name, "")), "chronicle")
-      || contains(lower(coalesce(inst.tags.Name, "")), "chronicles")
-      || contains(lower(coalesce(inst.tags.Name, "")), "support")
-      || contains(lower(coalesce(inst.tags.Name, "")), "rel")
-  ])
-
-  other_instance_ids = setsubtract(
-    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
-    local.cs_instance_ids
-  )
-
-  # Metrics for Chronicle & Support/Rel
-  cpu_metrics_cs = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["AWS/EC2","CPUUtilization","InstanceId",instance.id,
-      {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.cs_instance_ids, instance.id)
-  ]
-  mem_metrics_cs = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["CWAgent","mem_used_percent","InstanceId",instance.id,
-      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.cs_instance_ids, instance.id)
-  ]
-  disk_metrics_cs = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["CWAgent","disk_used_percent","InstanceId",instance.id,
-      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.cs_instance_ids, instance.id)
-  ]
-  all_metrics_cs      = concat(local.cpu_metrics_cs, local.mem_metrics_cs, local.disk_metrics_cs)
-  metrics_string_cs   = jsonencode(local.all_metrics_cs)
-
-  # Metrics for all other instances
-  cpu_metrics_other = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["AWS/EC2","CPUUtilization","InstanceId",instance.id,
-      {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.other_instance_ids, instance.id)
-  ]
-  mem_metrics_other = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["CWAgent","mem_used_percent","InstanceId",instance.id,
-      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.other_instance_ids, instance.id)
-  ]
-  disk_metrics_other = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["CWAgent","disk_used_percent","InstanceId",instance.id,
-      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.other_instance_ids, instance.id)
-  ]
-  all_metrics_other    = concat(local.cpu_metrics_other, local.mem_metrics_other, local.disk_metrics_other)
-  metrics_string_other = jsonencode(local.all_metrics_other)
