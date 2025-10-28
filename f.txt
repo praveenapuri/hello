@@ -1,5 +1,50 @@
-aws ssm send-command \
-  --document-name "AWS-RunPowerShellScript" \
-  --targets "Key=tag:Name,Values=*" \
-  --parameters 'commands=["Get-Volume -DriveLetter C"]' \
-  --region us-east-1
+schemaVersion: '2.2'
+description: >
+  Get Windows disk free space for specified drive letters (defaults to C:).
+  Outputs JSON with DriveLetter, SizeGB, FreeGB, UsedGB, FreePercent.
+
+parameters:
+  DriveLetters:
+    type: StringList
+    description: "Drive letters to inspect (e.g., C, D). Defaults to C."
+    default:
+      - C
+
+mainSteps:
+  - name: GetDiskFree
+    action: aws:runPowerShellScript
+    inputs:
+      timeoutSeconds: 180
+      runCommand:
+        - |
+          param([string[]]$DriveLetters)
+          # If empty, gather all fixed drives; else just the specified ones
+          if (-not $DriveLetters -or $DriveLetters.Count -eq 0) {
+            $vols = Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter }
+          } else {
+            $vols = foreach ($d in $DriveLetters) {
+              Get-Volume -DriveLetter $d -ErrorAction SilentlyContinue
+            } | Where-Object { $_ -ne $null }
+          }
+
+          $out = $vols | ForEach-Object {
+            $sizeGB = [math]::Round(($_.Size/1GB),2)
+            $freeGB = [math]::Round(($_.SizeRemaining/1GB),2)
+            $usedGB = [math]::Round(($sizeGB - $freeGB),2)
+            $pct    = if ($_.Size -gt 0) {
+              [math]::Round((($_.SizeRemaining/$_.Size)*100),2)
+            } else { 0 }
+            [pscustomobject]@{
+              DriveLetter  = "$($_.DriveLetter):"
+              FileSystem   = $_.FileSystemType
+              SizeGB       = $sizeGB
+              FreeGB       = $freeGB
+              UsedGB       = $usedGB
+              FreePercent  = $pct
+            }
+          }
+          $out | ConvertTo-Json -Compress
+    precondition:
+      StringEquals:
+        - platformType
+        - Windows
