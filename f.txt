@@ -1,5 +1,22 @@
 {
-  "commands": [
-    "Get-Volume -DriveLetter C | Select-Object DriveLetter,Size,SizeRemaining"
+  "schemaVersion": "2.2",
+  "description": "Get Windows root (C:) volume free space",
+  "parameters": {},
+  "mainSteps": [
+    {
+      "name": "GetRootFreeSpace",
+      "action": "aws:runPowerShellScript",
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Windows"
+        ]
+      },
+      "inputs": {
+        "runCommand": [
+          "Get-Volume -DriveLetter C | Select-Object DriveLetter,Size,SizeRemaining | ConvertTo-Json -Compress"
+        ]
+      }
+    }
   ]
 }
