@@ -1,59 +1,54 @@
 powershell -NoProfile -ExecutionPolicy Bypass -Command {
-  $Region = "us-east-1"   # change if needed
+  $Region = "us-east-1"
 
   $instanceScript = @'
 $iid  = (Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id -TimeoutSec 2)
 $host = $env:COMPUTERNAME
-$vols = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter }
+$vols = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveType -eq "Fixed" }
 $rows = foreach ($v in $vols) {
   $sizeGB = [math]::Round(($v.Size/1GB), 2)
   $freeGB = [math]::Round(($v.SizeRemaining/1GB), 2)
   $pct    = if ($v.Size -gt 0) { [math]::Round((($v.SizeRemaining/$v.Size)*100), 2) } else { 0 }
-  [pscustomobject]@{ Drive = ($v.DriveLetter + ":"); SizeGB = $sizeGB; FreeGB = $freeGB; FreePct = $pct }
+  [pscustomobject]@{ Drive=($v.DriveLetter + ":"); SizeGB=$sizeGB; FreeGB=$freeGB; FreePct=$pct }
 }
-[pscustomobject]@{ InstanceId = $iid; Computer = $host; Volumes = $rows } | ConvertTo-Json -Compress
+[pscustomobject]@{ InstanceId=$iid; Computer=$host; Volumes=$rows } | ConvertTo-Json -Compress
 '@
 
-  # write the SSM parameters to a temp file (avoids quoting issues)
   $paramsJson = @{ commands = @($instanceScript) } | ConvertTo-Json -Depth 4
+
+  # create temp file & convert path to forward slashes
   $tmp = [System.IO.Path]::GetTempFileName()
   Set-Content -Path $tmp -Value $paramsJson -Encoding UTF8
+  $tmpUri = "file://" + ($tmp -replace '\\','/')
 
-  # run on all Windows instances
+  # ✅ this is where failure happened before
   $cmdId = aws ssm send-command `
     --document-name "AWS-RunPowerShellScript" `
     --targets "Key=PlatformTypes,Values=Windows" `
-    --parameters file://$tmp `
+    --parameters $tmpUri `
     --region $Region `
     --query "Command.CommandId" `
     --output text
-  if (-not $cmdId) { throw "Failed to start SSM command." }
-  Write-Host "Started SSM CommandId: $cmdId"
+
+  if (-not $cmdId) { throw "Still no CommandId - check SSM permissions or instance not managed." }
+
+  Write-Host "Command started: $cmdId"
 
   # wait for completion
   $terminal = @("Success","Cancelled","Failed","TimedOut","Incomplete")
   do {
-    Start-Sleep -Seconds 3
+    Start-Sleep 3
     $status = aws ssm list-commands --command-id $cmdId --region $Region --query "Commands[0].Status" --output text 2>$null
-    if (-not $status) { $status = "Pending" }
-    Write-Host "Status: $status"
   } while ($terminal -notcontains $status)
 
-  # fetch per-instance output and consolidate locally
   $inv = aws ssm list-command-invocations --command-id $cmdId --details --region $Region --output json | ConvertFrom-Json
   $all = @()
   foreach ($ci in $inv.CommandInvocations) {
     $out = $ci.CommandPlugins[0].Output
     if ([string]::IsNullOrWhiteSpace($out)) { continue }
-    try {
-      $obj = $out | ConvertFrom-Json
-      if ($obj -is [System.Collections.IEnumerable] -and -not ($obj.PSObject.TypeNames -contains 'System.Collections.Hashtable')) { $all += $obj } else { $all += $obj }
-    } catch { $all += @{ InstanceId = $ci.InstanceId; ParseError = $true; Raw = $out } }
+    try { $all += ($out | ConvertFrom-Json) } catch { }
   }
-
-  $outPath = Join-Path (Get-Location) ("consolidated-diskfree-" + $cmdId + ".json")
-  $all | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $outPath
-  Write-Host "Saved: $outPath"
-
-  Remove-Item $tmp -ErrorAction SilentlyContinue
+  $outFile = "consolidated-diskfree-$cmdId.json"
+  $all | ConvertTo-Json -Depth 6 | Set-Content $outFile
+  Write-Host "Saved: $outFile"
 }
