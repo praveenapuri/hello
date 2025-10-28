@@ -1,5 +1,115 @@
-aws ec2 describe-instances \
-  --filters Name=platform,Values=windows \
-  --query "Reservations[].Instances[].{Instance:InstanceId,Volumes:BlockDeviceMappings[].Ebs.VolumeId}" \
-  --output table \
-  --region us-east-1
+param(
+  [string]$Region = "us-east-1",
+  [string]$Bucket,                  # optional: if set, uploads consolidated JSON to s3://$Bucket/$Prefix/
+  [string]$Prefix = "ssm/windows/diskfree"  # optional
+)
+
+$ErrorActionPreference = "Stop"
+
+# 1) Build the SSM Run Command payload (avoid CMD quoting issues)
+$tempDir   = Join-Path $env:TEMP ("ssm-" + [guid]::NewGuid())
+$paramsFile = Join-Path $tempDir "params.json"
+New-Item -ItemType Directory -Path $tempDir | Out-Null
+
+$instanceScript = @'
+$iid  = (Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id -TimeoutSec 2)
+$host = $env:COMPUTERNAME
+$vols = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter }
+
+$rows = foreach ($v in $vols) {
+  $sizeGB = [math]::Round(($v.Size/1GB), 2)
+  $freeGB = [math]::Round(($v.SizeRemaining/1GB), 2)
+  $pct    = if ($v.Size -gt 0) { [math]::Round((($v.SizeRemaining/$v.Size)*100), 2) } else { 0 }
+  [pscustomobject]@{
+    Drive      = ($v.DriveLetter + ":")
+    SizeGB     = $sizeGB
+    FreeGB     = $freeGB
+    FreePct    = $pct
+  }
+}
+
+# Output a single JSON object per instance: { InstanceId, Computer, Volumes: [ ... ] }
+[pscustomobject]@{
+  InstanceId = $iid
+  Computer   = $host
+  Volumes    = $rows
+} | ConvertTo-Json -Compress
+'@
+
+@{ commands = @($instanceScript) } | ConvertTo-Json | Set-Content -Encoding UTF8 $paramsFile
+
+# 2) Kick off SSM on all Windows instances
+$send = aws ssm send-command `
+  --document-name "AWS-RunPowerShellScript" `
+  --targets "Key=PlatformTypes,Values=Windows" `
+  --parameters file://$paramsFile `
+  --region $Region `
+  --query "Command.CommandId" `
+  --output text
+
+if (-not $send) { throw "Failed to start SSM command." }
+$cmdId = $send
+Write-Host "Started SSM CommandId: $cmdId"
+
+# 3) Poll for completion
+$terminal = @("Success","Cancelled","Failed","TimedOut","Incomplete")
+do {
+  Start-Sleep -Seconds 3
+  $status = aws ssm list-commands --command-id $cmdId --region $Region --query "Commands[0].Status" --output text 2>$null
+  if (-not $status) { $status = "Pending" }
+  Write-Host "Status: $status"
+} while ($terminal -notcontains $status)
+
+# 4) Pull every instance's stdout (JSON) and consolidate
+$invokes = aws ssm list-command-invocations `
+  --command-id $cmdId `
+  --details `
+  --region $Region `
+  --output json | ConvertFrom-Json
+
+$consolidated = @()
+
+foreach ($inv in $invokes.CommandInvocations) {
+  $iid   = $inv.InstanceId
+  $out   = $inv.CommandPlugins[0].Output
+  if ([string]::IsNullOrWhiteSpace($out)) { continue }
+
+  try {
+    $obj = $out | ConvertFrom-Json
+    # $obj is the per-instance object { InstanceId, Computer, Volumes:[...] }
+    if ($obj -is [System.Collections.IEnumerable] -and -not ($obj.PSObject.TypeNames -contains 'System.Collections.Hashtable')) {
+      # rare case of array; flatten
+      $consolidated += $obj
+    } else {
+      $consolidated += $obj
+    }
+  } catch {
+    $consolidated += @{ InstanceId = $iid; ParseError = $true; Raw = $out }
+  }
+}
+
+# 5) Write consolidated JSON locally
+$outPath = Join-Path (Get-Location) ("consolidated-diskfree-" + $cmdId + ".json")
+$consolidated | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $outPath
+Write-Host "Consolidated JSON saved to: $outPath"
+
+# 6) (Optional) Upload to S3
+if ($Bucket) {
+  $key = ($Prefix.TrimEnd('/') + "/" + $cmdId + "/consolidated.json")
+  aws s3 cp $outPath ("s3://$Bucket/$key") --region $Region | Out-Null
+  Write-Host "Uploaded to s3://$Bucket/$key"
+}
+
+# Cleanup temp
+Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue
+
+
+
+
+
+
+
+
+
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\collect-win-diskfree.ps1 -Region us-east-1
+
