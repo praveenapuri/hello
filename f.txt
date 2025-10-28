@@ -1,15 +1,5 @@
-aws ec2 describe-volumes \
-  --filters Name=volume-type,Values=io2 \
-  --region us-east-1 \
-  --query "sum(Volumes[].Size)"
-
-
-LIMIT=$(aws service-quotas list-service-quotas --service-code ebs --region us-east-1 \
-  --query "Quotas[?contains(QuotaName, 'io2') && contains(QuotaName, 'storage')].Value | [0]")
-
-USAGE_GB=$(aws ec2 describe-volumes --filters Name=volume-type,Values=io2 \
-  --region us-east-1 --query "sum(Volumes[].Size)")
-
-USAGE_TB=$(echo "scale=2; $USAGE_GB/1024" | bc)
-
-echo "io2 Storage Usage: $USAGE_TB TiB / $LIMIT TiB allowed"
+aws ssm send-command \
+  --document-name "AWS-RunPowerShellScript" \
+  --targets "Key=tag:Name,Values=*" \
+  --parameters 'commands=["Get-Volume -DriveLetter C"]' \
+  --region us-east-1
