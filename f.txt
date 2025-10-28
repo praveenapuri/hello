@@ -1,39 +1,36 @@
 powershell -NoProfile -ExecutionPolicy Bypass -Command {
-  # === EDIT THESE ===
-  $DocName = "Win-Root-Free-CMD"     # ← your existing SSM Command document name
-  $Region  = "us-east-1"             # ← region
-  # Optional: SSM document parameters (name -> list of strings). Leave empty if none.
-  # Examples:
-  # $DocParams = @{ DriveLetters = @("C","D") }
-  # $DocParams = @{ ThresholdPct = @("15") }
-  $DocParams = @{}
+  $Region = "us-east-1"   # change if needed
 
-  # Build CLI args, avoiding quoting issues by writing params (if any) to a temp JSON file
-  $args = @(
-    "ssm","send-command",
-    "--document-name", $DocName,
-    "--targets", "Key=PlatformTypes,Values=Windows",
-    "--region", $Region,
-    "--query","Command.CommandId",
-    "--output","text"
-  )
+  $instanceScript = @'
+$iid  = (Invoke-RestMethod -Uri http://169.254.169.254/latest/meta-data/instance-id -TimeoutSec 2)
+$host = $env:COMPUTERNAME
+$vols = Get-Volume -ErrorAction SilentlyContinue | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter }
+$rows = foreach ($v in $vols) {
+  $sizeGB = [math]::Round(($v.Size/1GB), 2)
+  $freeGB = [math]::Round(($v.SizeRemaining/1GB), 2)
+  $pct    = if ($v.Size -gt 0) { [math]::Round((($v.SizeRemaining/$v.Size)*100), 2) } else { 0 }
+  [pscustomobject]@{ Drive = ($v.DriveLetter + ":"); SizeGB = $sizeGB; FreeGB = $freeGB; FreePct = $pct }
+}
+[pscustomobject]@{ InstanceId = $iid; Computer = $host; Volumes = $rows } | ConvertTo-Json -Compress
+'@
 
-  $tmp = $null
-  if ($DocParams.Count -gt 0) {
-    $tmp = [System.IO.Path]::GetTempFileName()
-    # Convert to the structure SSM expects: { "ParamName": ["val1","val2"] }
-    $paramJson = ($DocParams.GetEnumerator() | ForEach-Object {
-      @{ ($_.Key) = [System.String[]]$_.Value }
-    } | ConvertTo-Json)
-    Set-Content -Path $tmp -Value $paramJson -Encoding UTF8
-    $args += @("--parameters","file://$tmp")
-  }
+  # write the SSM parameters to a temp file (avoids quoting issues)
+  $paramsJson = @{ commands = @($instanceScript) } | ConvertTo-Json -Depth 4
+  $tmp = [System.IO.Path]::GetTempFileName()
+  Set-Content -Path $tmp -Value $paramsJson -Encoding UTF8
 
-  $cmdId = aws @args
+  # run on all Windows instances
+  $cmdId = aws ssm send-command `
+    --document-name "AWS-RunPowerShellScript" `
+    --targets "Key=PlatformTypes,Values=Windows" `
+    --parameters file://$tmp `
+    --region $Region `
+    --query "Command.CommandId" `
+    --output text
   if (-not $cmdId) { throw "Failed to start SSM command." }
   Write-Host "Started SSM CommandId: $cmdId"
 
-  # Wait for completion
+  # wait for completion
   $terminal = @("Success","Cancelled","Failed","TimedOut","Incomplete")
   do {
     Start-Sleep -Seconds 3
@@ -42,7 +39,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command {
     Write-Host "Status: $status"
   } while ($terminal -notcontains $status)
 
-  # Fetch outputs and consolidate
+  # fetch per-instance output and consolidate locally
   $inv = aws ssm list-command-invocations --command-id $cmdId --details --region $Region --output json | ConvertFrom-Json
   $all = @()
   foreach ($ci in $inv.CommandInvocations) {
@@ -51,14 +48,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command {
     try {
       $obj = $out | ConvertFrom-Json
       if ($obj -is [System.Collections.IEnumerable] -and -not ($obj.PSObject.TypeNames -contains 'System.Collections.Hashtable')) { $all += $obj } else { $all += $obj }
-    } catch {
-      $all += @{ InstanceId = $ci.InstanceId; Raw = $out; ParseError = $true }
-    }
+    } catch { $all += @{ InstanceId = $ci.InstanceId; ParseError = $true; Raw = $out } }
   }
 
-  $outPath = Join-Path (Get-Location) ("consolidated-ssm-output-" + $cmdId + ".json")
-  $all | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 $outPath
-  Write-Host "Consolidated output saved to: $outPath"
+  $outPath = Join-Path (Get-Location) ("consolidated-diskfree-" + $cmdId + ".json")
+  $all | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $outPath
+  Write-Host "Saved: $outPath"
 
-  if ($tmp) { Remove-Item $tmp -ErrorAction SilentlyContinue }
+  Remove-Item $tmp -ErrorAction SilentlyContinue
 }
