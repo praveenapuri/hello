@@ -26,3 +26,5 @@ disk_win_other_free = flatten([
     ]
   ]
 ])
+
+     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
