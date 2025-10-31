@@ -24,28 +24,93 @@ locals {
   # extract Lambda names from var
   lambda_function_names = var.lambda_function_names
 
-  # --- EC2 Metrics Generation (UNCHANGED) ---
-  cpu_metrics = [
-    for instance in values(data.aws_instance.instance_details) : [
-      "AWS/EC2", "CPUUtilization", "InstanceId", instance.id,
-      { "label" : "CPU - ${coalesce(instance.tags.Name, instance.id)}" }
+  # -----------------------
+  # EC2 OS split
+  # -----------------------
+  windows_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if try(lower(inst.platform), "") == "windows"
+  ])
+
+  linux_ids = setsubtract(
+    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+    local.windows_ids
+  )
+
+  # Friendly name map
+  inst_name = {
+    for inst in values(data.aws_instance.instance_details) :
+    inst.id => coalesce(inst.tags.Name, inst.id)
+  }
+
+  # -----------------------
+  # EC2 metrics (per-instance) — LINUX
+  # -----------------------
+  linux_cpu = [
+    for iid in local.linux_ids : [
+      "AWS/EC2", "CPUUtilization", "InstanceId", iid,
+      { "label": "CPU % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  mem_metrics = [
-    for instance in values(data.aws_instance.instance_details) : [
-      "CWAgent", "mem_used_percent", "InstanceId", instance.id,
-      { "label" : "%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}" }
+  linux_mem = [
+    for iid in local.linux_ids : [
+      "CWAgent", "mem_used_percent", "InstanceId", iid,
+      { "label": "Mem Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  disk_metrics = [
-    for instance in values(data.aws_instance.instance_details) : [
-      "CWAgent", "disk_used_percent", "InstanceId", instance.id,
-      { "label" : "%Disk - ${coalesce(instance.tags.Name, instance.id)}" }
+  linux_disk = [
+    for iid in local.linux_ids : [
+      "CWAgent", "disk_used_percent", "InstanceId", iid,
+      { "label": "Disk Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
 
-  all_metrics = concat(local.cpu_metrics, local.mem_metrics, local.disk_metrics)
-  metrics_string = jsonencode(local.all_metrics)
+  linux_all_metrics = concat(local.linux_cpu, local.linux_mem, local.linux_disk)
+  linux_metrics_string = jsonencode(local.linux_all_metrics)
+
+  # -----------------------
+  # EC2 metrics (per-instance) — WINDOWS
+  # -----------------------
+  windows_cpu = [
+    for iid in local.windows_ids : [
+      "AWS/EC2", "CPUUtilization", "InstanceId", iid,
+      { "label": "CPU % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
+    ]
+  ]
+  windows_mem = [
+    for iid in local.windows_ids : [
+      "CWAgent", "Memory % Committed Bytes In Use", "InstanceId", iid,
+      { "label": "Mem Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
+    ]
+  ]
+  # Disk Used % = 100 - (LogicalDisk % Free Space)
+  windows_disk = flatten([
+    for idx, iid in tolist(local.windows_ids) : [
+      [
+        "CWAgent", "LogicalDisk % Free Space", "InstanceId", iid,
+        {
+          "id": "wfree_${replace(iid, "-", "")}_${idx}",
+          "label": "Disk Free % - ${lookup(local.inst_name, iid, iid)}",
+          "stat": "Average", "period": 300
+        }
+      ],
+      [
+        {
+          "expression": "100 - wfree_${replace(iid, "-", "")}_${idx}",
+          "id": "wused_${replace(iid, "-", "")}_${idx}",
+          "label": "Disk Used % - ${lookup(local.inst_name, iid, iid)}",
+          "period": 300
+        }
+      ]
+    ]
+  ])
+
+  windows_all_metrics = concat(local.windows_cpu, local.windows_mem, local.windows_disk)
+  windows_metrics_string = jsonencode(local.windows_all_metrics)
+
+  # -----------------------
+  # (UNCHANGED) Other resources
+  # -----------------------
 
   # --- Lambda Metrics Generation (UNCHANGED) ---
   lambda_invocations = [
@@ -88,10 +153,7 @@ locals {
   )
   lambda_metrics_string = jsonencode(local.all_lambda_metrics)
 
-  # --- EFS Metrics Generation (NEW) ---
-  # Use native EFS metrics that work cleanly without metric math:
-  # - PercentIOLimit (percentage)
-  # - StorageBytes   (absolute bytes)
+  # --- EFS Metrics Generation (UNCHANGED) ---
   efs_percent_io = [
     for id in var.efs_file_system_ids : [
       "AWS/EFS", "PercentIOLimit", "FileSystemId", id,
@@ -107,10 +169,7 @@ locals {
   efs_all_metrics = concat(local.efs_percent_io, local.efs_storage)
   efs_metrics_string = jsonencode(local.efs_all_metrics)
 
-  # --- FSx (Windows FS) Metrics Generation (NEW) ---
-  # Both are native percentage metrics:
-  # - StorageCapacityUtilization
-  # - FileServerDiskThroughputUtilization
+  # --- FSx (UNCHANGED) ---
   fsx_storage_util = [
     for id in var.fsx_file_system_ids : [
       "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", id,
@@ -126,8 +185,7 @@ locals {
   fsx_all_metrics = concat(local.fsx_storage_util, local.fsx_disk_tp_util)
   fsx_metrics_string = jsonencode(local.fsx_all_metrics)
 
-  # --- SSM Jobs (RunCommand) Metrics ---
-  # String-only rows + trailing label objects
+  # --- SSM Jobs (UNCHANGED) ---
   ssm_jobs_metrics = [
     ["AWS/SSM-RunCommand", "CommandsInProgress", { "label" : "SSM-CommandsInProgress", "color": "#1E88E5" }],
     ["AWS/SSM-RunCommand", "CommandsSucceeded", { "label" : "SSM-CommandsSucceeded", "color": "#00C853" }],
@@ -138,7 +196,7 @@ locals {
   ]
   ssm_jobs_metrics_string = jsonencode(local.ssm_jobs_metrics)
 
-  # NLB: ActiveFlowCount, RejectedFlowCount (all LoadBalancers)
+  # --- NLB (UNCHANGED) ---
   nlb_metrics_search = [
     [
       {
@@ -155,8 +213,9 @@ locals {
       }
     ]
   ]
+  nlb_metrics_string = jsonencode(local.nlb_metrics_search)
 
-  # ALB: RequestCount, 4XX, 5XX (all LoadBalancers)
+  # --- ALB (UNCHANGED) ---
   alb_metrics_search = [
     [
       {
@@ -179,13 +238,9 @@ locals {
       }
     ]
   ]
-
-  # Strings for injecting into your local.final heredoc
-  nlb_metrics_string = jsonencode(local.nlb_metrics_search)
   alb_metrics_string = jsonencode(local.alb_metrics_search)
 
-  # ALB TargetGroup HTTP & Latency (all target groups)
-  # Counts use Sum; latency uses Average.
+  # --- ALB TargetGroup HTTP & Latency (UNCHANGED) ---
   alb_tg_http_metrics_search = [
     [
       {
@@ -215,11 +270,9 @@ locals {
       }
     ]
   ]
-
-  # String for injecting into your local.final heredoc
   alb_tg_http_metrics_string = jsonencode(local.alb_tg_http_metrics_search)
 
-  # EBS metrics via CloudWatch SEARCH (auto-discovers all VolumeId series)
+  # --- EBS metrics via SEARCH (UNCHANGED) ---
   ebs_latency_tp_search = [
     [
       { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)",     id = "ebs_rt", label = "helper: TotalReadTime",  visible = false }
@@ -237,10 +290,9 @@ locals {
       { expression = "IF(MAX(ebs_tp)>100, 1, 0)", id = "ebs_te", label = "EBS - ThroughputExceededCheck (0/1)" }
     ]
   ]
-
   ebs_latency_tp_metrics_string = jsonencode(local.ebs_latency_tp_search)
 
-  # --- Dashboard JSON (CONCAT all widgets) ---
+  # ---------------- Dashboard JSON (CONCAT all widgets) ----------------
   final = <<-EOF
 {
   "widgets" : [
@@ -252,20 +304,34 @@ locals {
       "height" : 6,
       "properties" :
       {
-        "metrics" : ${local.metrics_string},
+        "metrics" : ${local.linux_metrics_string},
         "view": "gauge",
         "region" :  "${var.region}",
-        "yAxis" : {
-          "left" : {
-            "min" : 2,
-            "max" : 100
-          }
-        },
+        "yAxis" : { "left" : { "min" : 0, "max" : 100 } },
         "liveData": true,
         "period": 300,
-        "title": "EC2-Health"
+        "title": "EC2 – Linux (CPU %, Mem Used %, Disk Used %)"
       }
     },
+
+    {
+      "type"   : "metric",
+      "x": 0,
+      "y": 6,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.windows_metrics_string},
+        "view": "gauge",
+        "region" :  "${var.region}",
+        "yAxis" : { "left" : { "min" : 0, "max" : 100 } },
+        "liveData": true,
+        "period": 300,
+        "title": "EC2 – Windows (CPU %, Mem Used %, Disk Used %)"
+      }
+    },
+
     {
       "type"   : "metric",
       "x": 0,
@@ -309,12 +375,7 @@ locals {
         "metrics" : ${local.fsx_metrics_string},
         "view": "gauge",
         "region" :  "${var.region}",
-        "yAxis" : {
-          "left" : {
-            "min" : 0,
-            "max" : 100
-          }
-        },
+        "yAxis" : { "left" : { "min" : 0, "max" : 100 } },
         "period": 60,
         "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
       }
