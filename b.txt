@@ -6,10 +6,10 @@
   windows_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
     if (
-      lower(try(inst.platform, "")) == "windows"                                     # explicit platform
-      || contains(lower(try(inst.platform_details, "")), "windows")                  # platform_details says Windows
-      || lower(try(inst.tags.OS, "")) == "windows"                                   # tag fallback: OS=Windows
-      || lower(try(inst.tags.Os, "")) == "windows"                                   # common variant
+      lower(try(inst.platform, "")) == "windows"                                      # explicit platform
+      || length(regexall("windows", lower(try(inst.platform_details, "")))) > 0       # match in platform_details
+      || lower(try(inst.tags.OS, "")) == "windows"                                    # tag fallback: OS=Windows
+      || lower(try(inst.tags.Os, "")) == "windows"
       || lower(try(inst.tags.os, "")) == "windows"
     )
   ])
