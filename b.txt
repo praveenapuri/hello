@@ -1,87 +1,35 @@
-# ---------------- EC2 instance discovery (keep your existing data sources) ----------------
-# data "aws_instances" "monitored_instances" { ... }
-# data "aws_instance"  "instance_details"   { ... }
+    # EC2: Chronicles (Linux)
+      {
+        type       = "metric"
+        x          = 0
+        y          = 0
+        width      = 24
+        height     = 6
+        properties = {
+          title   = "EC2 – Chronicles (CPU, Mem Used %, Disk Used %)"
+          region  = var.region
+          view    = "singleValue"
+          stat    = "Average"
+          period  = 300
+          yAxis   = { left = { min = 0, max = 100 } }
+          metrics = local.chronicle_metrics
+        }
+      },
 
-# ---------------- EC2-only locals (REPLACE THIS WHOLE BLOCK) ----------------
-locals {
-  # Identify instance sets based on Name contains "chronicles" (case-insensitive)
-  csr_ids = toset([
-    for inst in values(data.aws_instance.instance_details) : inst.id
-    if length(regexall("chronicles", lower(try(inst.tags.Name, "")))) > 0
-  ])
-
-  other_ids = setsubtract(
-    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
-    local.csr_ids
-  )
-
-  # Friendly display name per instance
-  name_of = {
-    for inst in values(data.aws_instance.instance_details) :
-    inst.id => coalesce(try(inst.tags.Name, null), inst.id)
-  }
-
-  # ---------------- CPU (common) ----------------
-  cpu_csr = [
-    for iid in local.csr_ids : [
-      "AWS/EC2","CPUUtilization","InstanceId",iid,
-      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  cpu_other = [
-    for iid in local.other_ids : [
-      "AWS/EC2","CPUUtilization","InstanceId",iid,
-      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # ---------------- Memory ----------------
-  # Chronicles = Linux memory
-  mem_linux_csr = [
-    for iid in local.csr_ids : [
-      "CWAgent","mem_used_percent","InstanceId",iid,
-      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # Other = Windows memory
-  mem_windows_other = [
-    for iid in local.other_ids : [
-      "CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,
-      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # ---------------- Disk ----------------
-  # Chronicles = Linux disk used %
-  disk_linux_csr = [
-    for iid in local.csr_ids : [
-      "CWAgent","disk_used_percent","InstanceId",iid,
-      { label = "Disk Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # Other = Windows disk (NO metric math; show Free % directly to satisfy the API)
-  disk_win_other_free = [
-    for iid in local.other_ids : [
-      "CWAgent","LogicalDisk % Free Space","InstanceId",iid,
-      { label = "Disk Free % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # ---------------- Final per-window metric lists (arrays only) ----------------
-  # Chronicles window: Linux-only (CPU + Mem Used % + Disk Used %)
-  metrics_csr = concat(
-    local.cpu_csr,
-    local.mem_linux_csr,
-    local.disk_linux_csr
-  )
-
-  # Other window: Windows-only (CPU + Mem Used % + Disk Free %)
-  metrics_other = concat(
-    local.cpu_other,
-    local.mem_windows_other,
-    local.disk_win_other_free
-  )
-}
+      # EC2: Other (Windows)
+      {
+        type       = "metric"
+        x          = 0
+        y          = 6
+        width      = 24
+        height     = 6
+        properties = {
+          title   = "EC2 – Other (CPU, Mem Used %, Disk Free %)"
+          region  = var.region
+          view    = "singleValue"
+          stat    = "Average"
+          period  = 300
+          yAxis   = { left = { min = 0, max = 100 } }
+          metrics = local.other_metrics
+        }
+      },
