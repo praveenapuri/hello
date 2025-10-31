@@ -1,17 +1,435 @@
-  # --- Robust OS detection: platform, platform_details, or OS tag fallback ---
-  all_instance_ids = toset([
-    for inst in values(data.aws_instance.instance_details) : inst.id
-  ])
+############################################
+# main.tf
+############################################
+terraform {
+  backend "s3" {}
+}
 
-  windows_ids = toset([
+provider "aws" {
+  # region via env or add: region = var.region
+}
+
+# ------------------------------------------
+# Discover EC2 instances (running/pending)
+# ------------------------------------------
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
+}
+
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
+
+# ------------------------------------------
+# Locals: Chronicle split, per-instance metrics
+# ------------------------------------------
+locals {
+  # Friendly names for tiles
+  name_of = {
+    for inst in values(data.aws_instance.instance_details) :
+    inst.id => try(inst.tags.Name, inst.id)
+  }
+
+  # All instance IDs
+  all_ids = toset([for inst in values(data.aws_instance.instance_details) : inst.id])
+
+  # ---------------- Chronicle grouping ----------------
+  # Chronicle if:
+  # - Name tag contains "chronicle" (case-insensitive), OR
+  # - Project/Service/Team tag equals "chronicle"
+  chronicle_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
     if (
-      lower(try(inst.platform, "")) == "windows"                                      # explicit platform
-      || length(regexall("windows", lower(try(inst.platform_details, "")))) > 0       # match in platform_details
-      || lower(try(inst.tags.OS, "")) == "windows"                                    # tag fallback: OS=Windows
-      || lower(try(inst.tags.Os, "")) == "windows"
-      || lower(try(inst.tags.os, "")) == "windows"
+      length(regexall("chronicle", lower(try(inst.tags.Name, "")))) > 0
+      || lower(try(inst.tags.Project, "")) == "chronicle"
+      || lower(try(inst.tags.Service, "")) == "chronicle"
+      || lower(try(inst.tags.Team, ""))    == "chronicle"
     )
   ])
 
-  linux_ids = setsubtract(local.all_instance_ids, local.windows_ids)
+  other_ids = setsubtract(local.all_ids, local.chronicle_ids)
+
+  # ---------------- CPU (EC2) ----------------
+  cpu_chronicle = [
+    for iid in local.chronicle_ids : [
+      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+  cpu_other = [
+    for iid in local.other_ids : [
+      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # -------------- Memory Used % --------------
+  # Linux: CWAgent mem_used_percent
+  mem_linux_chronicle = [
+    for iid, inst in {
+      for i in values(data.aws_instance.instance_details) : i.id => i if contains(local.chronicle_ids, i.id)
+    } : [
+      "CWAgent","mem_used_percent","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  mem_linux_other = [
+    for iid, inst in {
+      for i in values(data.aws_instance.instance_details) : i.id => i if contains(local.other_ids, i.id)
+    } : [
+      "CWAgent","mem_used_percent","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # Windows: CWAgent "Memory % Committed Bytes In Use"
+  mem_windows_chronicle = [
+    for iid, inst in {
+      for i in values(data.aws_instance.instance_details) : i.id => i if contains(local.chronicle_ids, i.id)
+    } : [
+      "CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  mem_windows_other = [
+    for iid, inst in {
+      for i in values(data.aws_instance.instance_details) : i.id => i if contains(local.other_ids, i.id)
+    } : [
+      "CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # --------------- Disk Used % ----------------
+  # Linux: CWAgent disk_used_percent
+  disk_linux_chronicle = [
+    for iid, inst in {
+      for i in values(data.aws_instance.instance_details) : i.id => i if contains(local.chronicle_ids, i.id)
+    } : [
+      "CWAgent","disk_used_percent","InstanceId",iid,
+      { label = "Disk Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  disk_linux_other = [
+    for iid, inst in {
+      for i in values(data.aws_instance.instance_details) : i.id => i if contains(local.other_ids, i.id)
+    } : [
+      "CWAgent","disk_used_percent","InstanceId",iid,
+      { label = "Disk Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # Windows: 100 - LogicalDisk % Free Space (expression per instance)
+  disk_win_chronicle = flatten([
+    for idx, iid in tolist(local.chronicle_ids) : [
+      [
+        "CWAgent","LogicalDisk % Free Space","InstanceId",iid,
+        { id = "wfree_c_${replace(iid,"-","")}_${idx}", label = "Disk Free % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+      ],
+      [
+        { expression = "100 - wfree_c_${replace(iid,"-","")}_${idx}",
+          id = "wused_c_${replace(iid,"-","")}_${idx}",
+          label = "Disk Used % - ${lookup(local.name_of, iid, iid)}",
+          period = 300
+        }
+      ]
+    ]
+  ])
+
+  disk_win_other = flatten([
+    for idx, iid in tolist(local.other_ids) : [
+      [
+        "CWAgent","LogicalDisk % Free Space","InstanceId",iid,
+        { id = "wfree_o_${replace(iid,"-","")}_${idx}", label = "Disk Free % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+      ],
+      [
+        { expression = "100 - wfree_o_${replace(iid,"-","")}_${idx}",
+          id = "wused_o_${replace(iid,"-","")}_${idx}",
+          label = "Disk Used % - ${lookup(local.name_of, iid, iid)}",
+          period = 300
+        }
+      ]
+    ]
+  ])
+
+  # ---------------- Compose windows ----------------
+  # NOTE: We include BOTH Linux & Windows metrics for each group; whichever
+  # OS metrics exist for a given instance will populate (the other will be empty).
+  metrics_chronicle = concat(
+    local.cpu_chronicle,
+    local.mem_linux_chronicle, local.mem_windows_chronicle,
+    local.disk_linux_chronicle, local.disk_win_chronicle
+  )
+
+  metrics_other = concat(
+    local.cpu_other,
+    local.mem_linux_other, local.mem_windows_other,
+    local.disk_linux_other, local.disk_win_other
+  )
+
+  # ---------------- Other (UNCHANGED) widgets ----------------
+  # Expect these variables to exist as in your previous file:
+  # var.region, var.lambda_function_names, var.efs_file_system_ids, var.fsx_file_system_ids
+
+  # Lambda
+  lambda_invocations = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda","Invocations","FunctionName",fn,
+      { label = "Invocations - ${fn}", stat = "Sum", period = 300 }
+    ]
+  ]
+  lambda_errors = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda","Errors","FunctionName",fn,
+      { label = "Errors - ${fn}", stat = "Sum", period = 300 }
+    ]
+  ]
+  lambda_duration = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda","Duration","FunctionName",fn,
+      { label = "Duration (ms) - ${fn}", stat = "Average", period = 300 }
+    ]
+  ]
+  lambda_throttles = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda","Throttles","FunctionName",fn,
+      { label = "Throttles - ${fn}", stat = "Sum", period = 300 }
+    ]
+  ]
+  lambda_concurrent = [
+    for fn in var.lambda_function_names : [
+      "AWS/Lambda","ConcurrentExecutions","FunctionName",fn,
+      { label = "Concurrent - ${fn}", stat = "Maximum", period = 300 }
+    ]
+  ]
+  lambda_all_metrics = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
+
+  # EFS
+  efs_percent_io = [
+    for id in var.efs_file_system_ids : [
+      "AWS/EFS","PercentIOLimit","FileSystemId",id,
+      { label = "EFS PercentIOLimit - ${id}", stat = "Average", period = 300 }
+    ]
+  ]
+  efs_storage = [
+    for id in var.efs_file_system_ids : [
+      "AWS/EFS","StorageBytes","FileSystemId",id,
+      { label = "EFS StorageBytes - ${id}", stat = "Average", period = 300 }
+    ]
+  ]
+  efs_all_metrics = concat(local.efs_percent_io, local.efs_storage)
+
+  # FSx capacity
+  fsx_capacity_util = [
+    for id in var.fsx_file_system_ids : [
+      "AWS/FSx","StorageCapacityUtilization","FileSystemId",id,
+      { label = "FSx StorageCapacityUtilization - ${id}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # NLB (kept as per previous pattern; edit if you had different metrics)
+  nlb_metrics_search = [
+    [ "AWS/NetworkELB","ActiveFlowCount","LoadBalancer", "${var.nlb_arn_suffix}", { label="Active Flow Count", stat="Sum", period=300 } ],
+    [ "AWS/NetworkELB","RejectedConnectionCount","LoadBalancer", "${var.nlb_arn_suffix}", { label="Rejected Connection Count", stat="Sum", period=300 } ]
+  ]
+
+  # ALB (LB-level)
+  alb_metrics_search = [
+    [ "AWS/ApplicationELB","RequestCount","LoadBalancer", "${var.alb_arn_suffix}", { label="RequestCount", stat="Sum", period=300 } ],
+    [ "AWS/ApplicationELB","HTTPCode_ELB_4XX_Count","LoadBalancer", "${var.alb_arn_suffix}", { label="4XX", stat="Sum", period=300 } ],
+    [ "AWS/ApplicationELB","HTTPCode_ELB_5XX_Count","LoadBalancer", "${var.alb_arn_suffix}", { label="5XX", stat="Sum", period=300 } ]
+  ]
+
+  # EBS latency via SEARCH/IF (unchanged pattern)
+  ebs_latency_search = [
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)", id = "ebs_rt", visible = false }
+    ],
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)", id = "ebs_ro", visible = false }
+    ],
+    [
+      { expression = "IF(SUM(ebs_ro)>0, (SUM(ebs_rt)/SUM(ebs_ro))*1000, 0)", id = "ebs_read_ms", label = "EBS Avg Read Latency (ms)" }
+    ],
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalWriteTime\"', 'Sum', 300)", id = "ebs_wt", visible = false }
+    ],
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeWriteOps\"', 'Sum', 300)", id = "ebs_wo", visible = false }
+    ],
+    [
+      { expression = "IF(SUM(ebs_wo)>0, (SUM(ebs_wt)/SUM(ebs_wo))*1000, 0)", id = "ebs_write_ms", label = "EBS Avg Write Latency (ms)" }
+    ]
+  ]
+
+  # ---------------- Dashboard object ----------------
+  dashboard_obj = {
+    widgets = [
+
+      # Window 1: Chronicle instances (per-instance tiles)
+      {
+        type       = "metric"
+        x          = 0
+        y          = 0
+        width      = 24
+        height     = 6
+        properties = {
+          title   = "EC2 – Chronicle Instances (CPU, Mem Used %, Disk Used %)"
+          region  = var.region
+          view    = "singleValue"
+          stat    = "Average"
+          period  = 300
+          yAxis   = { left = { min = 0, max = 100 } }
+          metrics = local.metrics_chronicle
+          annotations = {
+            horizontal = [
+              { label = "75% Used Threshold", value = 75, color = "#d13212", fill = "above" }
+            ]
+          }
+        }
+      },
+
+      # Window 2: Other instances (per-instance tiles)
+      {
+        type       = "metric"
+        x          = 0
+        y          = 6
+        width      = 24
+        height     = 6
+        properties = {
+          title   = "EC2 – Other Instances (CPU, Mem Used %, Disk Used %)"
+          region  = var.region
+          view    = "singleValue"
+          stat    = "Average"
+          period  = 300
+          yAxis   = { left = { min = 0, max = 100 } }
+          metrics = local.metrics_other
+          annotations = {
+            horizontal = [
+              { label = "75% Used Threshold", value = 75, color = "#d13212", fill = "above" }
+            ]
+          }
+        }
+      },
+
+      # ---- NON-EC2 WIDGETS (kept same structure/intent as your previous file) ----
+
+      # Lambda
+      {
+        type       = "metric"
+        x          = 0
+        y          = 12
+        width      = 12
+        height     = 6
+        properties = {
+          title   = "Lambda – Invocations/Errors/Duration/Throttles/Concurrent"
+          region  = var.region
+          view    = "timeSeries"
+          stat    = "Sum"
+          period  = 300
+          metrics = local.lambda_all_metrics
+        }
+      },
+
+      # EFS
+      {
+        type       = "metric"
+        x          = 12
+        y          = 12
+        width      = 12
+        height     = 6
+        properties = {
+          title   = "EFS – PercentIOLimit & StorageBytes"
+          region  = var.region
+          view    = "timeSeries"
+          stat    = "Average"
+          period  = 300
+          metrics = local.efs_all_metrics
+        }
+      },
+
+      # FSx
+      {
+        type       = "metric"
+        x          = 0
+        y          = 18
+        width      = 12
+        height     = 6
+        properties = {
+          title   = "FSx – StorageCapacityUtilization"
+          region  = var.region
+          view    = "timeSeries"
+          stat    = "Average"
+          period  = 300
+          metrics = local.fsx_capacity_util
+        }
+      },
+
+      # NLB
+      {
+        type       = "metric"
+        x          = 12
+        y          = 18
+        width      = 12
+        height     = 6
+        properties = {
+          title   = "NLB – Active & Rejected Flow Count"
+          region  = var.region
+          view    = "timeSeries"
+          stat    = "Sum"
+          period  = 300
+          metrics = local.nlb_metrics_search
+        }
+      },
+
+      # ALB (LB-level)
+      {
+        type       = "metric"
+        x          = 0
+        y          = 24
+        width      = 12
+        height     = 6
+        properties = {
+          title   = "ALB – RequestCount / 4XX / 5XX"
+          region  = var.region
+          view    = "timeSeries"
+          stat    = "Sum"
+          period  = 300
+          metrics = local.alb_metrics_search
+        }
+      },
+
+      # EBS latency (derived)
+      {
+        type       = "metric"
+        x          = 12
+        y          = 24
+        width      = 12
+        height     = 6
+        properties = {
+          title   = "EBS – Avg Read/Write Latency (ms)"
+          region  = var.region
+          view    = "timeSeries"
+          stat    = "Average"
+          period  = 300
+          metrics = local.ebs_latency_search
+        }
+      }
+    ]
+  }
+}
+
+# ------------------------------------------
+# Dashboard resource
+# ------------------------------------------
+resource "aws_cloudwatch_dashboard" "ec2_chronicle_split" {
+  dashboard_name = "EC2-Chronicle-vs-Other"
+  dashboard_body = jsonencode(local.dashboard_obj)
+}
