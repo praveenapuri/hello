@@ -1,9 +1,9 @@
   # --- Robust OS detection: platform, platform_details, or OS tag fallback ---
-  local_all_instance_ids = toset([
+  all_instance_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
   ])
 
-  local_windows_ids = toset([
+  windows_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
     if (
       lower(try(inst.platform, "")) == "windows"                                     # explicit platform
@@ -14,8 +14,4 @@
     )
   ])
 
-  local_linux_ids = setsubtract(local_all_instance_ids, local_windows_ids)
-
-
-  linux_ids   = local.local_linux_ids
-  windows_ids = local.local_windows_ids
+  linux_ids = setsubtract(local.all_instance_ids, local.windows_ids)
