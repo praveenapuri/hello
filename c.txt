@@ -1,48 +1,5 @@
-{
-  "type": "metric",
-  "x": 0,
-  "y": 0,
-  "width": 12,
-  "height": 6,
-  "properties": {
-    "metrics": ${local.metrics_string},
-    "view": "gauge",
-    "region": "${var.region}",
-    "yAxis": {"left": {"min": 2, "max": 100}},
-    "liveData": true,
-    "period": 300,
-    "title": "EC2-Health"
-  }
-},
-{
-  "type": "metric",
-  "x": 0,
-  "y": 0,
-  "width": 12,
-  "height": 3,
-  "properties": {
-    "metrics": ${local.metrics_string_cs},
-    "view": "gauge",
-    "region": "${var.region}",
-    "yAxis": { "left": { "min": 2, "max": 100 } },
-    "liveData": true,
-    "period": 300,
-    "title": "EC2-Health : Chronicle & Support/Rel"
-  }
-},
-{
-  "type": "metric",
-  "x": 0,
-  "y": 3,
-  "width": 12,
-  "height": 3,
-  "properties": {
-    "metrics": ${local.metrics_string_other},
-    "view": "gauge",
-    "region": "${var.region}",
-    "yAxis": { "left": { "min": 2, "max": 100 } },
-    "liveData": true,
-    "period": 300,
-    "title": "EC2-Health : Other Instances"
-  }
-},
+ Error: "dashboard_body" contains an invalid JSON: invalid character 't' looking for beginning of object key string
+│
+│   with aws_cloudwatch_dashboard.health,
+│   on main.tf line 484, in resource "aws_cloudwatch_dashboard" "health":
+│  484:   dashboard_body = local.final
