@@ -1,30 +1,72 @@
-# Add this helper list near your other EC2 locals (or reuse an existing var if you have one)
-# Drives you want to chart for Windows machines:
-win_disk_letters = ["C:"]  # add "D:", "E:" here if you want those too
+# ---- WINDOWS-ONLY FIX (drop-in) ----
+# Add/keep this helper list (which drives to chart). You can add "D:", "E:" etc.
+locals {
+  win_disk_letters = ["C:"]
+}
 
-
-# Replace your current Windows MEM local with this:
-mem_windows_other = [
-  for iid in local.other_ids : [
-    "CWAgent", "Memory % Committed Bytes In Use",
-    "InstanceId", iid,
-    "objectname", "Memory",
-    { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-  ]
-]
-
-
-# Replace your current Windows DISK local with this (shows Disk Free % per drive; add letters above):
-disk_win_other_free = flatten([
-  for iid in tolist(local.other_ids) : [
-    for letter in local.win_disk_letters : [
-      "CWAgent", "LogicalDisk % Free Space",
-      "InstanceId", iid,
-      "objectname", "LogicalDisk",
-      "instance", letter,
-      { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+# Windows CPU (leave as you already had it; shown here for completeness)
+locals {
+  cpu_other = [
+    for iid in local.other_ids : [
+      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
-])
+}
 
-     "message": "Field \"metrics\" has to be an array of array of strings, with an optional metricRenderer object as last element"
+# Windows MEMORY: requires objectname="Memory"
+locals {
+  mem_windows_other = [
+    for iid in local.other_ids : [
+      "CWAgent","Memory % Committed Bytes In Use",
+      "InstanceId",iid,
+      "objectname","Memory",
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+}
+
+# Windows DISK: use "LogicalDisk % Free Space" and MUST include objectname + instance=<drive>
+# (We avoid metric-math here to satisfy "array of arrays" rule.)
+locals {
+  disk_win_other_free = flatten([
+    for iid in tolist(local.other_ids) : [
+      for letter in local.win_disk_letters : [
+        "CWAgent","LogicalDisk % Free Space",
+        "InstanceId",iid,
+        "objectname","LogicalDisk",
+        "instance",letter,
+        { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+      ]
+    ]
+  ])
+}
+
+# Final WINDOWS metrics list (CPU + Mem Used % + Disk Free %)
+locals {
+  metrics_other = concat(
+    local.cpu_other,
+    local.mem_windows_other,
+    local.disk_win_other_free
+  )
+}
+# ---- END WINDOWS-ONLY FIX ----
+
+
+
+{
+  "type": "metric",
+  "x": 0,
+  "y": 6,
+  "width": 24,
+  "height": 6,
+  "properties": {
+    "title": "EC2 – Other (CPU, Mem Used %, Disk Free %)",
+    "region": "${var.region}",
+    "view": "singleValue",
+    "stat": "Average",
+    "period": 300,
+    "yAxis": { "left": { "min": 0, "max": 100 } },
+    "metrics": ${jsonencode(local.metrics_other)}
+  }
+}
