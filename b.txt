@@ -50,27 +50,27 @@ locals {
       { "label": "CPU % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  # Memory: include both Linux and Windows variants (only the applicable one will have data)
-  mem_linux_chronicle = [
+  # Memory (OS-agnostic: include both; only the valid one will have data)
+  mem_chronicle_from_agent = [
     for iid in local.chronicle_ids : [
       "CWAgent", "mem_used_percent", "InstanceId", iid,
       { "label": "Mem Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  mem_windows_chronicle = [
+  mem_chronicle_from_windows = [
     for iid in local.chronicle_ids : [
       "CWAgent", "Memory % Committed Bytes In Use", "InstanceId", iid,
       { "label": "Mem Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  # Disk: Linux direct; Windows = 100 - % Free (per instance metric math)
-  disk_linux_chronicle = [
+  # Disk (OS-agnostic: agent metric + per-instance expression for Windows)
+  disk_chronicle_from_agent = [
     for iid in local.chronicle_ids : [
       "CWAgent", "disk_used_percent", "InstanceId", iid,
       { "label": "Disk Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  disk_win_chronicle = flatten([
+  disk_chronicle_from_windows = flatten([
     for idx, iid in tolist(local.chronicle_ids) : [
       [
         "CWAgent", "LogicalDisk % Free Space", "InstanceId", iid,
@@ -89,8 +89,8 @@ locals {
 
   metrics_chronicle = concat(
     local.cpu_chronicle,
-    local.mem_linux_chronicle, local.mem_windows_chronicle,
-    local.disk_linux_chronicle, local.disk_win_chronicle
+    local.mem_chronicle_from_agent, local.mem_chronicle_from_windows,
+    local.disk_chronicle_from_agent, local.disk_chronicle_from_windows
   )
   metrics_chronicle_string = jsonencode(local.metrics_chronicle)
 
@@ -101,25 +101,25 @@ locals {
       { "label": "CPU % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  mem_linux_other = [
+  mem_other_from_agent = [
     for iid in local.other_ids : [
       "CWAgent", "mem_used_percent", "InstanceId", iid,
       { "label": "Mem Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  mem_windows_other = [
+  mem_other_from_windows = [
     for iid in local.other_ids : [
       "CWAgent", "Memory % Committed Bytes In Use", "InstanceId", iid,
       { "label": "Mem Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  disk_linux_other = [
+  disk_other_from_agent = [
     for iid in local.other_ids : [
       "CWAgent", "disk_used_percent", "InstanceId", iid,
       { "label": "Disk Used % - ${lookup(local.inst_name, iid, iid)}", "stat": "Average", "period": 300 }
     ]
   ]
-  disk_win_other = flatten([
+  disk_other_from_windows = flatten([
     for idx, iid in tolist(local.other_ids) : [
       [
         "CWAgent", "LogicalDisk % Free Space", "InstanceId", iid,
@@ -138,12 +138,12 @@ locals {
 
   metrics_other = concat(
     local.cpu_other,
-    local.mem_linux_other, local.mem_windows_other,
-    local.disk_linux_other, local.disk_win_other
+    local.mem_other_from_agent, local.mem_other_from_windows,
+    local.disk_other_from_agent, local.disk_other_from_windows
   )
   metrics_other_string = jsonencode(local.metrics_other)
 
-  # ---------- (UNCHANGED) Original all-instances metrics (not used now, kept intact) ----------
+  # ---------- (UNCHANGED) Original all-instances metrics (retained intact) ----------
   cpu_metrics = [
     for instance in values(data.aws_instance.instance_details) : [
       "AWS/EC2", "CPUUtilization", "InstanceId", instance.id,
