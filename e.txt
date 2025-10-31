@@ -1,25 +1,49 @@
-{
-  "schemaVersion": "2.2",
-  "description": "Log only when C: free space <25%",
-  "parameters": {},
-  "mainSteps": [
-    {
-      "action": "aws:runPowerShellScript",
-      "name": "CheckDiskThreshold",
-      "inputs": {
-        "runCommand": [
-          "$v = Get-Volume -DriveLetter C;",
-          "$sizeGB = [math]::Round($v.Size/1GB,2);",
-          "$freeGB = [math]::Round($v.SizeRemaining/1GB,2);",
-          "$pct = if ($sizeGB -gt 0) { [math]::Round(($freeGB / $sizeGB) * 100,2) } else { 0 };",
-          "",
-          "if ($pct -lt 25) {",
-          "  $usedGB = [math]::Round($sizeGB - $freeGB,2);",
-          "  $msg = [pscustomobject]@{ Drive='C:'; SizeGB=$sizeGB; UsedGB=$usedGB; FreeGB=$freeGB; FreePercent=$pct };",
-          "  $msg | ConvertTo-Json -Compress",
-          "}"
-        ]
+############################################
+# main.tf
+############################################
+provider "aws" {
+  # region = "us-east-1"
+}
+
+resource "aws_ssm_document" "install_cwagent_command" {
+  name           = "Install-Start-CloudWatchAgent-Windows"
+  document_type  = "Command"
+  document_format = "JSON"
+
+  content = jsonencode({
+    schemaVersion = "2.2"
+    description   = "Install and start the CloudWatch Agent on Windows EC2 instances."
+
+    mainSteps = [
+      {
+        action = "aws:runCommand"
+        name   = "InstallCloudWatchAgent"
+        inputs = {
+          DocumentName = "AWS-ConfigureAWSPackage"
+          Parameters = {
+            action           = ["Install"]
+            installationType = ["Uninstall and reinstall"]
+            name             = ["AmazonCloudWatchAgent"]
+          }
+        }
+      },
+      {
+        action = "aws:runCommand"
+        name   = "StartCloudWatchAgent"
+        inputs = {
+          DocumentName = "AmazonCloudWatch-ManageAgent"
+          Parameters = {
+            action                       = ["configure"]
+            mode                         = ["ec2"]
+            optionalConfigurationSource  = ["default"]
+            optionalRestart              = ["yes"]
+          }
+        }
       }
-    }
-  ]
+    ]
+  })
+}
+
+output "ssm_command_document_name" {
+  value = aws_ssm_document.install_cwagent_command.name
 }
