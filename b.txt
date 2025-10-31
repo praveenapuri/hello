@@ -1,15 +1,7 @@
-  # --- Robust OS detection: platform, platform_details, or OS tag fallback ---
-  all_instance_ids = toset([for inst in values(data.aws_instance.instance_details) : inst.id])
-
-  windows_ids = toset([
-    for inst in values(data.aws_instance.instance_details) : inst.id
-    if (
-      lower(try(inst.platform, "")) == "windows"                                    # explicit platform
-      || contains(lower(try(inst.platform_details, "")), "windows")                 # platform_details says Windows
-      || lower(try(inst.tags.OS, "")) == "windows"                                  # tag fallback: OS=Windows
-      || lower(try(inst.tags.Os, "")) == "windows"                                  # (common variant)
-      || lower(try(inst.tags.os, "")) == "windows"
-    )
-  ])
-
-  linux_ids = setsubtract(all_instance_ids, windows_ids)
+ Error: Invalid reference
+│
+│   on main.tf line 41, in locals:
+│   41:   linux_ids = setsubtract(all_instance_ids, windows_ids)
+│
+│ A reference to a resource type must be followed by at least one attribute
+│ access, specifying the resource name.
