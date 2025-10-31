@@ -24,16 +24,11 @@ locals {
   # extract Lambda names from var
   lambda_function_names = var.lambda_function_names
 
-  # ---------- EC2 grouping: Chronicle vs Other ----------
-  # Chronicle if: Name contains "chronicle" (case-insensitive) OR Project/Service/Team = "chronicle"
+  # ---------- EC2 grouping: Chronicles vs Other ----------
+  # Chronicles = Name tag contains "chronicles" (case-insensitive)
   chronicle_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
-    if (
-      length(regexall("chronicle", lower(try(inst.tags.Name, "")))) > 0
-      || lower(try(inst.tags.Project, "")) == "chronicle"
-      || lower(try(inst.tags.Service, "")) == "chronicle"
-      || lower(try(inst.tags.Team, ""))    == "chronicle"
-    )
+    if length(regexall("chronicles", lower(try(inst.tags.Name, "")))) > 0
   ])
 
   other_ids = setsubtract(
@@ -47,7 +42,7 @@ locals {
     inst.id => coalesce(inst.tags.Name, inst.id)
   }
 
-  # ---------- EC2 metrics: Chronicle ----------
+  # ---------- EC2 metrics: Chronicles ----------
   # CPU
   cpu_chronicle = [
     for iid in local.chronicle_ids : [
@@ -203,7 +198,7 @@ locals {
     ]
   ]
 
-  all_lambda_metrics   = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
+  all_lambda_metrics    = concat(local.lambda_invocations, local.lambda_errors, local.lambda_duration, local.lambda_throttles, local.lambda_concurrent)
   lambda_metrics_string = jsonencode(local.all_lambda_metrics)
 
   # --- EFS Metrics Generation (UNCHANGED) ---
@@ -363,7 +358,7 @@ locals {
         "yAxis" : { "left" : { "min" : 0, "max" : 100 } },
         "liveData": true,
         "period": 300,
-        "title": "EC2 – Chronicle (CPU %, Mem Used %, Disk Used %)"
+        "title": "EC2 – Chronicles (CPU %, Mem Used %, Disk Used %)"
       }
     },
 
