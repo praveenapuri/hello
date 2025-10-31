@@ -1,1 +1,28 @@
-Error: "dashboard_body" contains an invalid JSON: invalid character '{' after array element
+# Add this helper list near your other EC2 locals (or reuse an existing var if you have one)
+# Drives you want to chart for Windows machines:
+win_disk_letters = ["C:"]  # add "D:", "E:" here if you want those too
+
+
+# Replace your current Windows MEM local with this:
+mem_windows_other = [
+  for iid in local.other_ids : [
+    "CWAgent", "Memory % Committed Bytes In Use",
+    "InstanceId", iid,
+    "objectname", "Memory",
+    { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+  ]
+]
+
+
+# Replace your current Windows DISK local with this (shows Disk Free % per drive; add letters above):
+disk_win_other_free = flatten([
+  for iid in tolist(local.other_ids) : [
+    for letter in local.win_disk_letters : [
+      "CWAgent", "LogicalDisk % Free Space",
+      "InstanceId", iid,
+      "objectname", "LogicalDisk",
+      "instance", letter,
+      { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+])
