@@ -1,263 +1,87 @@
-terraform {
-  backend "s3" {}
-}
+# ---------------- EC2 instance discovery (keep your existing data sources) ----------------
+# data "aws_instances" "monitored_instances" { ... }
+# data "aws_instance"  "instance_details"   { ... }
 
-# ---- Discover EC2 instances (running/pending) ----
-data "aws_instances" "monitored_instances" {
-  filter {
-    name   = "instance-state-name"
-    values = ["running", "pending"]
-  }
-}
-
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.monitored_instances.ids)
-  instance_id = each.key
-}
-
+# ---------------- EC2-only locals (REPLACE THIS WHOLE BLOCK) ----------------
 locals {
-  # Split by Name contains "chronicles" (case-insensitive)
-  chronicle_ids = toset([
+  # Identify instance sets based on Name contains "chronicles" (case-insensitive)
+  csr_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
     if length(regexall("chronicles", lower(try(inst.tags.Name, "")))) > 0
   ])
 
   other_ids = setsubtract(
     toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
-    local.chronicle_ids
+    local.csr_ids
   )
 
-  # Friendly name map
-  inst_name = {
+  # Friendly display name per instance
+  name_of = {
     for inst in values(data.aws_instance.instance_details) :
-    inst.id => coalesce(inst.tags.Name, inst.id)
+    inst.id => coalesce(try(inst.tags.Name, null), inst.id)
   }
 
-  # ---------------- Chronicles (Linux-only metrics) ----------------
-  chronicle_metrics = flatten([
-    for iid in tolist(local.chronicle_ids) : [
-      # CPU
-      ["AWS/EC2","CPUUtilization","InstanceId",iid,{
-        label  = "CPU % - ${lookup(local.inst_name, iid, iid)}",
-        stat   = "Average",
-        period = 300
-      }],
-      # Memory (Linux)
-      ["CWAgent","mem_used_percent","InstanceId",iid,{
-        label  = "Mem Used % - ${lookup(local.inst_name, iid, iid)}",
-        stat   = "Average",
-        period = 300
-      }],
-      # Disk (Linux)
-      ["CWAgent","disk_used_percent","InstanceId",iid,{
-        label  = "Disk Used % - ${lookup(local.inst_name, iid, iid)}",
-        stat   = "Average",
-        period = 300
-      }]
+  # ---------------- CPU (common) ----------------
+  cpu_csr = [
+    for iid in local.csr_ids : [
+      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
-  ])
+  ]
 
-  # ---------------- Other (Windows-only metrics) ----------------
-  other_metrics = flatten([
-    for iid in tolist(local.other_ids) : [
-      # CPU
-      ["AWS/EC2","CPUUtilization","InstanceId",iid,{
-        label  = "CPU % - ${lookup(local.inst_name, iid, iid)}",
-        stat   = "Average",
-        period = 300
-      }],
-      # Memory (Windows)
-      ["CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,{
-        label  = "Mem Used % - ${lookup(local.inst_name, iid, iid)}",
-        stat   = "Average",
-        period = 300
-      }],
-      # Disk (Windows) — using "LogicalDisk % Free Space" directly (no math)
-      ["CWAgent","LogicalDisk % Free Space","InstanceId",iid,{
-        label  = "Disk Free % - ${lookup(local.inst_name, iid, iid)}",
-        stat   = "Average",
-        period = 300
-      }]
+  cpu_other = [
+    for iid in local.other_ids : [
+      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
-  ])
+  ]
 
-  # ---------------- Keep all your other widget locals EXACTLY as-is ----------------
-  # If your original file defines locals/variables for Lambda/EFS/FSx/NLB/ALB/EBS/SSM,
-  # leave them untouched below. I'm showing typical shapes; replace with your originals.
-
-  lambda_all_metrics = var.lambda_all_metrics != null ? var.lambda_all_metrics : []
-  efs_all_metrics    = var.efs_all_metrics    != null ? var.efs_all_metrics    : []
-  fsx_capacity_util  = var.fsx_capacity_util  != null ? var.fsx_capacity_util  : []
-  nlb_metrics_search = var.nlb_metrics_search != null ? var.nlb_metrics_search : []
-  alb_metrics_search = var.alb_metrics_search != null ? var.alb_metrics_search : []
-  alb_tg_metrics     = var.alb_tg_metrics     != null ? var.alb_tg_metrics     : []
-  ebs_latency_search = var.ebs_latency_search != null ? var.ebs_latency_search : []
-
-  # ---------------- Dashboard object ----------------
-  dashboard_obj = {
-    widgets = [
-
-      # EC2: Chronicles (Linux)
-      {
-        type       = "metric"
-        x          = 0
-        y          = 0
-        width      = 24
-        height     = 6
-        properties = {
-          title   = "EC2 – Chronicles (CPU, Mem Used %, Disk Used %)"
-          region  = var.region
-          view    = "singleValue"
-          stat    = "Average"
-          period  = 300
-          yAxis   = { left = { min = 0, max = 100 } }
-          metrics = local.chronicle_metrics
-        }
-      },
-
-      # EC2: Other (Windows)
-      {
-        type       = "metric"
-        x          = 0
-        y          = 6
-        width      = 24
-        height     = 6
-        properties = {
-          title   = "EC2 – Other (CPU, Mem Used %, Disk Free %)"
-          region  = var.region
-          view    = "singleValue"
-          stat    = "Average"
-          period  = 300
-          yAxis   = { left = { min = 0, max = 100 } }
-          metrics = local.other_metrics
-        }
-      },
-
-      # ---------------- Non-EC2 widgets (KEEP EXACTLY AS YOUR ORIGINAL) ----------------
-
-      # Lambda
-      {
-        type       = "metric"
-        x          = 0
-        y          = 12
-        width      = 12
-        height     = 6
-        properties = {
-          title   = "Lambda – Invocations/Errors/Duration/Throttles/Concurrent"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Sum"
-          period  = 300
-          metrics = local.lambda_all_metrics
-        }
-      },
-
-      # EFS
-      {
-        type       = "metric"
-        x          = 12
-        y          = 12
-        width      = 12
-        height     = 6
-        properties = {
-          title   = "EFS – PercentIOLimit & StorageBytes"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Average"
-          period  = 300
-          metrics = local.efs_all_metrics
-        }
-      },
-
-      # FSx
-      {
-        type       = "metric"
-        x          = 0
-        y          = 18
-        width      = 12
-        height     = 6
-        properties = {
-          title   = "FSx – StorageCapacityUtilization"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Average"
-          period  = 300
-          metrics = local.fsx_capacity_util
-        }
-      },
-
-      # NLB
-      {
-        type       = "metric"
-        x          = 12
-        y          = 18
-        width      = 12
-        height     = 6
-        properties = {
-          title   = "NLB – Metrics"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Sum"
-          period  = 300
-          metrics = local.nlb_metrics_search
-        }
-      },
-
-      # ALB (LB-level)
-      {
-        type       = "metric"
-        x          = 0
-        y          = 24
-        width      = 12
-        height     = 6
-        properties = {
-          title   = "ALB – RequestCount / 4XX / 5XX"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Sum"
-          period  = 300
-          metrics = local.alb_metrics_search
-        }
-      },
-
-      # ALB TargetGroup
-      {
-        type       = "metric"
-        x          = 12
-        y          = 24
-        width      = 12
-        height     = 6
-        properties = {
-          title   = "ALB TargetGroup – 3XX / 4XX / 5XX / TargetResponseTime"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Sum"
-          period  = 300
-          metrics = local.alb_tg_metrics
-        }
-      },
-
-      # EBS latency (derived searches from your original)
-      {
-        type       = "metric"
-        x          = 0
-        y          = 30
-        width      = 24
-        height     = 6
-        properties = {
-          title   = "EBS – Avg Read/Write Latency (ms)"
-          region  = var.region
-          view    = "timeSeries"
-          stat    = "Average"
-          period  = 300
-          metrics = local.ebs_latency_search
-        }
-      }
+  # ---------------- Memory ----------------
+  # Chronicles = Linux memory
+  mem_linux_csr = [
+    for iid in local.csr_ids : [
+      "CWAgent","mem_used_percent","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
-  }
-}
+  ]
 
-resource "aws_cloudwatch_dashboard" "health" {
-  dashboard_name = "EPIC-Infra-Health"
-  dashboard_body = jsonencode(local.dashboard_obj)
+  # Other = Windows memory
+  mem_windows_other = [
+    for iid in local.other_ids : [
+      "CWAgent","Memory % Committed Bytes In Use","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # ---------------- Disk ----------------
+  # Chronicles = Linux disk used %
+  disk_linux_csr = [
+    for iid in local.csr_ids : [
+      "CWAgent","disk_used_percent","InstanceId",iid,
+      { label = "Disk Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # Other = Windows disk (NO metric math; show Free % directly to satisfy the API)
+  disk_win_other_free = [
+    for iid in local.other_ids : [
+      "CWAgent","LogicalDisk % Free Space","InstanceId",iid,
+      { label = "Disk Free % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # ---------------- Final per-window metric lists (arrays only) ----------------
+  # Chronicles window: Linux-only (CPU + Mem Used % + Disk Used %)
+  metrics_csr = concat(
+    local.cpu_csr,
+    local.mem_linux_csr,
+    local.disk_linux_csr
+  )
+
+  # Other window: Windows-only (CPU + Mem Used % + Disk Free %)
+  metrics_other = concat(
+    local.cpu_other,
+    local.mem_windows_other,
+    local.disk_win_other_free
+  )
 }
