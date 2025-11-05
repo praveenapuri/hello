@@ -1,64 +1,38 @@
-provider "aws" {
-  # region = "us-east-1"
-}
-
-resource "aws_ssm_document" "install_start_cwagent_windows_cmd" {
-  name            = "Install-Start-CloudWatchAgent-Windows"
-  document_type   = "Command"
-  document_format = "JSON"
-
-  content = jsonencode({
-    schemaVersion = "2.2"
-    description   = "Install and start the CloudWatch Agent on Windows EC2 instances."
-    parameters    = {
-      OptionalConfigurationSource = {
-        type          = "String"
-        default       = "default"
-        allowedValues = ["default", "ssm", "s3"]
-        description   = "Where to fetch the CloudWatch Agent config from: default | ssm | s3."
-      }
-      OptionalConfigurationLocation = {
-        type        = "String"
-        default     = ""
-        description = "If using 'ssm' or 's3', provide the parameter name (ssm) or s3 URI (s3)."
-      }
-    }
-    mainSteps = [
-      # 1) Install CloudWatch Agent using the configurePackage plugin
-      {
-        name   = "InstallCloudWatchAgent"
-        action = "aws:configurePackage"
-        inputs = {
-          name              = "AmazonCloudWatchAgent"
-          action            = "Install"
-          installationType  = "Uninstall and reinstall"
-        }
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "logfile": "C:\\Program Files\\Amazon\\AmazonCloudWatchAgent\\Logs\\amazon-cloudwatch-agent.log"
+  },
+  "metrics": {
+    "metrics_collected": {
+      "Memory": {
+        "measurement": [
+          "% Committed Bytes In Use",
+          "Available MBytes"
+        ],
+        "metrics_collection_interval": 60,
+        "resources": [
+          "*"
+        ]
       },
-      # 2) Configure & start via PowerShell
-      {
-        name   = "ConfigureAndStartAgent"
-        action = "aws:runPowerShellScript"
-        inputs = {
-          timeoutSeconds = 600
-          runCommand = [
-            # Build the -c argument based on parameters
-            "$Source = '{{ OptionalConfigurationSource }}'",
-            "$Location = '{{ OptionalConfigurationLocation }}'",
-            "$ConfigArg = if ($Source -eq 'default') { 'default' } elseif ($Source -eq 'ssm') { \"ssm:$Location\" } elseif ($Source -eq 's3') { \"s3:$Location\" } else { 'default' }",
-            # Path to the ctl script
-            "$Ctl = 'C:\\Program Files\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1'",
-            "if (-not (Test-Path $Ctl)) { throw \"CloudWatch Agent control script not found at: $Ctl\" }",
-            # Fetch config and start
-            "& $Ctl -a fetch-config -m ec2 -c $ConfigArg -s",
-            # Ensure it's started (idempotent)
-            "& $Ctl -a start -m ec2"
-          ]
-        }
+      "LogicalDisk": {
+        "measurement": [
+          "% Free Space",
+          "Free Megabytes"
+        ],
+        "metrics_collection_interval": 60,
+        "resources": [
+          "*"
+        ]
       }
+    },
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    },
+    "aggregation_dimensions": [
+      [
+        "InstanceId"
+      ]
     ]
-  })
-}
-
-output "ssm_command_document_name" {
-  value = aws_ssm_document.install_start_cwagent_windows_cmd.name
+  }
 }
