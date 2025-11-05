@@ -1,12 +1,12 @@
-# CORRECT
-disk_win_other_free = flatten( [ # <-- 1.
-  for iid in tolist(local.other_ids) : [ # <-- 2.
-    for letter in local.win_disk_letters : [ # <-- 3.
-      "CWAgent","LogicalDisk % Free Space",
-      "InstanceId",iid,
-      "objectname","LogicalDisk",
-      "instance",letter,
-      { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+# This code, as written, is correct and will fix your error.
+  disk_win_other_free = flatten([
+    for iid in tolist(local.other_ids) : [
+      for letter in local.win_disk_letters : [
+        "CWAgent","LogicalDisk % Free Space",
+        "InstanceId",iid,
+        "objectname","LogicalDisk",
+        "instance",letter,
+        { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+      ]
     ]
-  ]
-] )
+  ])
