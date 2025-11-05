@@ -1,60 +1,12 @@
-# --- Windows drives you want to chart ---
-locals {
-  win_disk_letters = ["C:"]  # add "D:", "E:" if you need them
-}
-
-# --- Windows MEMORY (requires objectname="Memory") ---
-locals {
-  mem_windows_other = [
-    for iid in local.other_ids : [
-      "CWAgent", "Memory % Committed Bytes In Use",
-      "InstanceId", iid,
-      "objectname", "Memory"
+# CORRECT
+disk_win_other_free = flatten( [ # <-- 1.
+  for iid in tolist(local.other_ids) : [ # <-- 2.
+    for letter in local.win_disk_letters : [ # <-- 3.
+      "CWAgent","LogicalDisk % Free Space",
+      "InstanceId",iid,
+      "objectname","LogicalDisk",
+      "instance",letter,
+      { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
-}
-
-# --- Windows DISK (LogicalDisk % Free Space)
-#     requires objectname="LogicalDisk" and instance="<drive letter>"
-locals {
-  disk_win_other_free = flatten([
-    for iid in tolist(local.other_ids) : [
-      for letter in local.win_disk_letters : [
-        "CWAgent", "LogicalDisk % Free Space",
-        "InstanceId", iid,
-        "objectname", "LogicalDisk",
-        "instance", letter
-      ]
-    ]
-  ])
-}
-{
-  "type": "metric",
-  "x": 0,
-  "y": 6,
-  "width": 24,
-  "height": 6,
-  "properties": {
-    "title": "EC2 – Other (Windows) – Memory Used %",
-    "region": "${var.region}",
-    "view": "singleValue",
-    "stat": "Average",
-    "period": 300,
-    "metrics": ${jsonencode(local.mem_windows_other)}
-  }
-},
-{
-  "type": "metric",
-  "x": 0,
-  "y": 12,
-  "width": 24,
-  "height": 6,
-  "properties": {
-    "title": "EC2 – Other (Windows) – Disk Free % (per drive)",
-    "region": "${var.region}",
-    "view": "singleValue",
-    "stat": "Average",
-    "period": 300,
-    "metrics": ${jsonencode(local.disk_win_other_free)}
-  }
-}
+] )
