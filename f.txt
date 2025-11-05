@@ -1,69 +1,6 @@
-# Identify instance sets based on Name contains "chronicles" (case-insensitive)
-  csr_ids = toset([
-    for inst in values(data.aws_instance.instance_details) : inst.id
-    if length(regexall("chronicles", lower(try(inst.tags.Name, "")))) > 0
-  ])
-
-  other_ids = setsubtract(
-    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
-    local.csr_ids
-  )
-
-  # Friendly display name per instance
-  name_of = {
-    for inst in values(data.aws_instance.instance_details) :
-    inst.id => coalesce(try(inst.tags.Name, null), inst.id)
-  }
-
-  # Drives you want to chart for Windows machines:
-  win_disk_letters = ["C:"]
-
-  # ---------------- CPU (common) ----------------
-  cpu_csr = [
-    for iid in local.csr_ids : [
-      "AWS/EC2","CPUUtilization","InstanceId",iid,
-      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  cpu_other = [
-    for iid in local.other_ids : [
-      "AWS/EC2","CPUUtilization","InstanceId",iid,
-      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # ---------------- Memory ----------------
-  # Chronicles = Linux memory
-  mem_linux_csr = [
-    for iid in local.csr_ids : [
-      "CWAgent","mem_used_percent","InstanceId",iid,
-      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # Other = Windows memory (required extra dimension)
-  mem_windows_other = [
-    for iid in local.other_ids : [
-      "CWAgent","Memory % Committed Bytes In Use",
-      "InstanceId",iid,
-      "objectname","Memory",
-      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # ---------------- Disk ----------------
-  # Chronicles = Linux disk used %
-  disk_linux_csr = [
-    for iid in local.csr_ids : [
-      "CWAgent","disk_used_percent","InstanceId",iid,
-      { label = "Disk Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
-  ]
-
-  # Other = Windows disk (NO metric math; show Free % directly with required dims)
-  disk_win_other_free = flatten([
-    for iid in tolist(local.other_ids) : [
+# Other = Windows disk (using a direct nested for-loop)
+  disk_win_other_free = [
+    for iid in tolist(local.other_ids) :
       for letter in local.win_disk_letters : [
         "CWAgent","LogicalDisk % Free Space",
         "InstanceId",iid,
@@ -71,26 +8,4 @@
         "instance",letter,
         { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
       ]
-    ]
-  ])
-
-  # ---------------- Final per-window metric lists (arrays only) ----------------
-  # Chronicles window: Linux-only (CPU + Mem Used % + Disk Used %)
-  metrics_csr = concat(
-    local.cpu_csr,
-    local.mem_linux_csr,
-    local.disk_linux_csr
-  )
-
-  # Other window: Windows-only (CPU + Mem Used % + Disk Free %)
-  metrics_other = concat(
-    local.cpu_other,
-    local.mem_windows_other,
-    local.disk_win_other_free
-  )
-
-
-   {
-│     "dataPath": "/widgets/1/properties/metrics/54",
-│     "message": "Should be array"
-│   },
+  ]
