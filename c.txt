@@ -1,30 +1,57 @@
-############################################
-# WINDOWS-ONLY LOCALS (drop-in replacement)
-############################################
-
-# Drives to display for Windows disk. Add more letters if you need them.
-locals {
-  win_disk_letters = ["C:"]
+terraform {
+  backend "s3" {}
 }
 
-# Friendly name map must already exist. If not, keep this:
-# locals {
-#   name_of = {
-#     for inst in values(data.aws_instance.instance_details) :
-#     inst.id => coalesce(try(inst.tags.Name, null), inst.id)
-#   }
-# }
+# -----------------------
+# EC2 instances discovery
+# -----------------------
+data "aws_instances" "monitored_instances" {
+  filter {
+    name   = "instance-state-name"
+    values = ["running", "pending"]
+  }
+}
 
-# Your other_ids must already exist (Chronicles split). Example:
-# locals {
-#   other_ids = setsubtract(
-#     toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
-#     local.csr_ids
-#   )
-# }
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.monitored_instances.ids)
+  instance_id = each.key
+}
 
-# ---- CPU (Windows) ----
+# -----------------------
+# Locals
+# -----------------------
 locals {
+  # extract Lambda names from var
+  lambda_function_names = var.lambda_function_names
+
+  # Identify instance sets based on Name contains "chronicles" (case-insensitive)
+  csr_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(regexall("chronicles", lower(try(inst.tags.Name, "")))) > 0
+  ])
+
+  other_ids = setsubtract(
+    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+    local.csr_ids
+  )
+
+  # Friendly display name per instance
+  name_of = {
+    for inst in values(data.aws_instance.instance_details) :
+    inst.id => coalesce(try(inst.tags.Name, null), inst.id)
+  }
+
+  # Drives you want to chart for Windows machines:
+  win_disk_letters = ["C:"]
+
+  # ---------------- CPU (common) ----------------
+  cpu_csr = [
+    for iid in local.csr_ids : [
+      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
   cpu_other = [
     for iid in local.other_ids : [
       "AWS/EC2", "CPUUtilization",
@@ -32,11 +59,17 @@ locals {
       { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
-}
 
-# ---- Memory (Windows) ----
-# REQUIRED: objectname = "Memory"
-locals {
+  # ---------------- Memory ----------------
+  # Chronicles = Linux memory
+  mem_linux_csr = [
+    for iid in local.csr_ids : [
+      "CWAgent","mem_used_percent","InstanceId",iid,
+      { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # Other = Windows memory
   mem_windows_other = [
     for iid in local.other_ids : [
       "CWAgent", "Memory % Committed Bytes In Use",
@@ -45,12 +78,17 @@ locals {
       { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
-}
 
-# ---- Disk (Windows) ----
-# We **avoid metric-math** (100 - Free%) to satisfy “array of array of strings” rule.
-# REQUIRED: objectname = "LogicalDisk" AND instance = "<drive letter>"
-locals {
+  # ---------------- Disk ----------------
+  # Chronicles = Linux disk used %
+  disk_linux_csr = [
+    for iid in local.csr_ids : [
+      "CWAgent","disk_used_percent","InstanceId",iid,
+      { label = "Disk Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
+  ]
+
+  # Other = Windows disk (NO metric math; show Free % directly to satisfy the API)
   disk_win_other_free = flatten([
     for iid in tolist(local.other_ids) : [
       for letter in local.win_disk_letters : [
@@ -62,14 +100,397 @@ locals {
       ]
     ]
   ])
-}
 
-# ---- FINAL Windows metrics list for the "Other" window ----
-# (Arrays only; properties map is LAST in each entry; no bare objects or expressions)
-locals {
+  # ---------------- Final per-window metric lists (arrays only) ----------------
+  # Chronicles window: Linux-only (CPU + Mem Used % + Disk Used %)
+  metrics_csr = concat(
+    local.cpu_csr,
+    local.mem_linux_csr,
+    local.disk_linux_csr
+  )
+
+  # Other window: Windows-only (CPU + Mem Used % + Disk Free %)
   metrics_other = concat(
     local.cpu_other,
     local.mem_windows_other,
     local.disk_win_other_free
   )
+
+  # --- Lambda Metrics Generation (UNCHANGED) ---
+  lambda_invocations = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Invocations", "FunctionName", fn,
+      { "label" : "Invocations - ${fn}" }
+    ]
+  ]
+  lambda_errors = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Errors", "FunctionName", fn,
+      { "label" : "Errors - ${fn}" }
+    ]
+  ]
+  lambda_duration = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Duration", "FunctionName", fn,
+      { "label" : "Duration - ${fn}" }
+    ]
+  ]
+  lambda_throttles = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "Throttles", "FunctionName", fn,
+      { "label" : "Throttles - ${fn}" }
+    ]
+  ]
+  lambda_concurrent = [
+    for fn in local.lambda_function_names : [
+      "AWS/Lambda", "ConcurrentExecutions", "FunctionName", fn,
+      { "label" : "Concurrent - ${fn}" }
+    ]
+  ]
+
+  all_lambda_metrics = concat(
+    local.lambda_invocations,
+    local.lambda_errors,
+    local.lambda_duration,
+    local.lambda_throttles,
+    local.lambda_concurrent
+  )
+  lambda_metrics_string = jsonencode(local.all_lambda_metrics)
+
+  # --- EFS Metrics Generation (NEW) ---
+  # Use native EFS metrics that work cleanly without metric math:
+  # - PercentIOLimit (percentage)
+  # - StorageBytes   (absolute bytes)
+  efs_percent_io = [
+    for id in var.efs_file_system_ids : [
+      "AWS/EFS", "PercentIOLimit", "FileSystemId", id,
+      { "label" : "EFS-PercentIOLimit - ${id}" }
+    ]
+  ]
+  efs_storage = [
+    for id in var.efs_file_system_ids : [
+      "AWS/EFS", "StorageBytes", "FileSystemId", id,
+      { "label" : "EFS-StorageBytes - ${id}" }
+    ]
+  ]
+  efs_all_metrics = concat(local.efs_percent_io, local.efs_storage)
+  efs_metrics_string = jsonencode(local.efs_all_metrics)
+
+  # --- FSx (Windows FS) Metrics Generation (NEW) ---
+  # Both are native percentage metrics:
+  # - StorageCapacityUtilization
+  # - FileServerDiskThroughputUtilization
+  fsx_storage_util = [
+    for id in var.fsx_file_system_ids : [
+      "AWS/FSx", "StorageCapacityUtilization", "FileSystemId", id,
+      { "label" : "FSx-StorageCapacityUtilization - ${id}" }
+    ]
+  ]
+  fsx_disk_tp_util = [
+    for id in var.fsx_file_system_ids : [
+      "AWS/FSx", "FileServerDiskThroughputUtilization", "FileSystemId", id,
+      { "label" : "FSx-FileServerDiskThroughputUtilization - ${id}" }
+    ]
+  ]
+  fsx_all_metrics = concat(local.fsx_storage_util, local.fsx_disk_tp_util)
+  fsx_metrics_string = jsonencode(local.fsx_all_metrics)
+
+  # --- SSM Jobs (RunCommand) Metrics ---
+  # String-only rows + trailing label objects
+  ssm_jobs_metrics = [
+    ["AWS/SSM-RunCommand", "CommandsInProgress", { "label" : "SSM-CommandsInProgress", "color": "#1E88E5" }],
+    ["AWS/SSM-RunCommand", "CommandsSucceeded", { "label" : "SSM-CommandsSucceeded", "color": "#00C853" }],
+    ["AWS/SSM-RunCommand", "CommandsFailed", { "label" : "SSM-CommandsFailed", "color": "#FF0000" }],
+    ["AWS/SSM-RunCommand", "CommandsCancelled", { "label" : "SSM-CommandsCancelled", "color": "#000000" }],
+    ["AWS/SSM-RunCommand", "CommandsTimedOut", { "label" : "SSM-CommandsTimedOut", "color": "#FF8C00" }],
+    ["AWS/SSM-RunCommand", "CommandsDeliveryTimedOut", { "label" : "SSM-CommandsDeliveryTimedOut", "color": "#8E24AA" }]
+  ]
+  ssm_jobs_metrics_string = jsonencode(local.ssm_jobs_metrics)
+
+  # NLB: ActiveFlowCount, RejectedFlowCount (all LoadBalancers)
+  nlb_metrics_search = [
+    [
+      {
+        expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"ActiveFlowCount\"', 'Sum', 60)"
+        id         = "nlb_afc"
+        color      = "#00FF00"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/NetworkELB,LoadBalancer} MetricName=\"RejectedFlowCount\"', 'Sum', 60)"
+        id         = "nlb_rfc"
+        color      = "#FF0000"
+      }
+    ]
+  ]
+
+  # ALB: RequestCount, 4XX, 5XX (all LoadBalancers)
+  alb_metrics_search = [
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"RequestCount\"', 'Sum', 60)"
+        id         = "alb_req"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"HTTPCode_ELB_4XX_Count\"', 'Sum', 60)"
+        id         = "alb_4xx"
+        color      = "#FFA500"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer} MetricName=\"HTTPCode_ELB_5XX_Count\"', 'Sum', 60)"
+        id         = "alb_5xx"
+        color      = "#FF0000"
+      }
+    ]
+  ]
+
+  # Strings for injecting into your local.final heredoc
+  nlb_metrics_string = jsonencode(local.nlb_metrics_search)
+  alb_metrics_string = jsonencode(local.alb_metrics_search)
+
+  # ALB TargetGroup HTTP & Latency (all target groups)
+  # Counts use Sum; latency uses Average.
+  alb_tg_http_metrics_search = [
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer,TargetGroup} MetricName=\"HTTPCode_Target_3XX_Count\"', 'Sum', 300)"
+        id         = "tg_3xx"
+        color      = "#FFD700"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer,TargetGroup} MetricName=\"HTTPCode_Target_4XX_Count\"', 'Sum', 300)"
+        id         = "tg_4xx"
+        color      = "#FFA500"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer,TargetGroup} MetricName=\"HTTPCode_Target_5XX_Count\"', 'Sum', 300)"
+        id         = "tg_5xx"
+        color      = "#FF0000"
+      }
+    ],
+    [
+      {
+        expression = "SEARCH('{AWS/ApplicationELB,LoadBalancer,TargetGroup} MetricName=\"TargetResponseTime\"', 'Average', 300)"
+        id         = "tg_trt"
+      }
+    ]
+  ]
+
+  # String for injecting into your local.final heredoc
+  alb_tg_http_metrics_string = jsonencode(local.alb_tg_http_metrics_search)
+
+  # EBS metrics via CloudWatch SEARCH (auto-discovers all VolumeId series)
+  ebs_latency_tp_search = [
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeTotalReadTime\"', 'Sum', 300)",     id = "ebs_rt", label = "helper: TotalReadTime",  visible = false }
+    ],
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeReadOps\"', 'Sum', 300)",           id = "ebs_ro", label = "helper: ReadOps",        visible = false }
+    ],
+    [
+      { expression = "SEARCH('{AWS/EBS,VolumeId} MetricName=\"VolumeThroughputPercentage\"', 'Average', 300)", id = "ebs_tp", label = "helper: Throughput%", visible = false }
+    ],
+    [
+      { expression = "IF(SUM(ebs_ro)>0, SUM(ebs_rt)/SUM(ebs_ro)*1000, 0)", id = "ebs_rl_ms", label = "EBS - VolumeAvgReadLatency (ms)" }
+    ],
+    [
+      { expression = "IF(MAX(ebs_tp)>100, 1, 0)", id = "ebs_te", label = "EBS - ThroughputExceededCheck (0/1)" }
+    ]
+  ]
+
+  ebs_latency_tp_metrics_string = jsonencode(local.ebs_latency_tp_search)
+
+  # --- Dashboard JSON (CONCAT all widgets) ---
+  final = <<-EOF
+{
+  "widgets" : [
+     {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "title": "EC2 – Chronicles (CPU, Mem Used %, Disk Used %)",
+        "region": "${var.region}",
+        "view": "gauge",
+        "stat": "Average",
+        "period": 300,
+        "yAxis": { "left": { "min": 0, "max": 100 } },
+        "metrics": ${jsonencode(local.metrics_csr)}
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 6,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "title": "EC2 – Other (CPU, Mem Used %, Disk Free %)",
+        "region": "${var.region}",
+        "view": "gauge",
+        "stat": "Average",
+        "period": 300,
+        "yAxis": { "left": { "min": 0, "max": 100 } },
+        "metrics": ${jsonencode(local.metrics_other)}
+      }
+    },
+    {
+      "type"   : "metric",
+      "x": 0,
+      "y": 7,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.lambda_metrics_string},
+        "view": "timeSeries",
+        "region" :  "${var.region}",
+        "period": 300,
+        "title": "Lambda-Health"
+      }
+    },
+
+    {
+      "type"   : "metric",
+      "x": 12,
+      "y": 0,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.efs_metrics_string},
+        "view": "timeSeries",
+        "region" :  "${var.region}",
+        "period": 300,
+        "title": "EFS - PercentIOLimit & StorageBytes"
+      }
+    },
+
+    {
+      "type"   : "metric",
+      "x": 12,
+      "y": 7,
+      "width" :12,
+      "height" : 6,
+      "properties" :
+      {
+        "metrics" : ${local.fsx_metrics_string},
+        "view": "gauge",
+        "region" :  "${var.region}",
+        "yAxis" : {
+          "left" : {
+            "min" : 0,
+            "max" : 100
+          }
+        },
+        "period": 60,
+        "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
+      }
+    },
+
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 7,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.ssm_jobs_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "stat": "Sum",
+        "title": "SSM Jobs - RunCommand Status"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 35,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.nlb_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "stat": "Sum",
+        "title": "NLB-Health : Active & Rejected Flows (all NLBs)"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 7,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.alb_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "stat": "Sum",
+        "title": "ALB-Health : Requests, 4XX, 5XX (all ALBs)"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 12,
+      "y": 7,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.alb_tg_http_metrics_string},
+        "view": "timeSeries",
+        "region": "${var.region}",
+        "period": 60,
+        "stat": "Average",
+        "title": "ALB TargetGroup Health"
+      }
+    },
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 7,
+      "width": 12,
+      "height": 6,
+      "properties": {
+        "metrics": ${local.ebs_latency_tp_metrics_string},
+        "view": "gauge",
+        "region": "${var.region}",
+        "period": 300,
+        "stat": "Average",
+        "yAxis": { "left": { "min": 0, "max": 100 } },
+        "title": "EBS-Health"
+      }
+    }
+  ]
+}
+EOF
+}
+
+# -----------------------
+# Outputs
+# -----------------------
+output "raw_json_string" {
+  value = replace(local.final, "\n", " ")
+}
+
+# -----------------------
+# CloudWatch Dashboard
+# -----------------------
+resource "aws_cloudwatch_dashboard" "health" {
+  dashboard_name = "EPIC-Infra-Health"
+  dashboard_body = local.final
 }
