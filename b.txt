@@ -33,6 +33,11 @@ locals {
     toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
     local.csr_ids
   )
+  # Friendly display name per instance
+  name_of = {
+    for inst in values(data.aws_instance.instance_details) :
+    inst.id => coalesce(try(inst.tags.Name, null), inst.id)
+  }
   # --- EC2 Metrics Generation (UNCHANGED) ---
   cpu_metrics = [
     for instance in values(data.aws_instance.instance_details) : [
@@ -100,23 +105,31 @@ locals {
   ]
   mem_windows_other = [
     for iid in local.other_ids : [
-      "CWAgent", "Memory % Committed Bytes In Use",
+      "CWAgent", "% Committed Bytes In Use",
+     # "CWAgent", "Available MBytes",
       "InstanceId", iid,
-      "objectname", "Memory"
+      "objectname", "Memory",
+      { label = "Mem Avail (MB) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
   disk_win_other_free = flatten([
     for iid in tolist(local.other_ids) : [
       for letter in local.win_disk_letters : [
-        "CWAgent", "LogicalDisk % Free Space",
-        "InstanceId", iid,
-        "objectname", "LogicalDisk",
-        "instance", letter
+        "CWAgent","% Free Space",
+       # "CWAgent","Free Megabytes",
+        "InstanceId",iid,
+        "objectname","LogicalDisk",
+        "instance",letter,
+        { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}",
+          stat = "Average",
+          period = 300 }
       ]
     ]
   ])
   all_metrics_other    = concat(local.cpu_metrics_other, local.mem_windows_other, local.disk_win_other_free)
   metrics_string_other = jsonencode(local.all_metrics_other)
+  mem_metrics_string_other = jsonencode(local.mem_windows_other)
+  disk_metrics_string_other = jsonencode(local.disk_win_other_free)
 
   # --- Lambda Metrics Generation (UNCHANGED) ---
   lambda_invocations = [
@@ -338,7 +351,7 @@ locals {
       "width": 12,
       "height": 3,
       "properties": {
-        "metrics": ${local.metrics_string_other},
+        "metrics": ${local.mem_metrics_string_other},
         "view": "gauge",
         "region": "${var.region}",
         "yAxis": { "left": { "min": 2, "max": 100 } },
