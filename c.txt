@@ -1,47 +1,71 @@
-# --- Windows: drives to chart (add "D:", "E:" if needed) ---
+############################################
+# WINDOWS-ONLY LOCALS (drop-in replacement)
+############################################
+
+# Drives to display for Windows disk. Add more letters if you need them.
 locals {
   win_disk_letters = ["C:"]
 }
 
-# --- Windows: CPU (unchanged shape; included for completeness) ---
+# Friendly name map must already exist. If not, keep this:
+# locals {
+#   name_of = {
+#     for inst in values(data.aws_instance.instance_details) :
+#     inst.id => coalesce(try(inst.tags.Name, null), inst.id)
+#   }
+# }
+
+# Your other_ids must already exist (Chronicles split). Example:
+# locals {
+#   other_ids = setsubtract(
+#     toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+#     local.csr_ids
+#   )
+# }
+
+# ---- CPU (Windows) ----
 locals {
   cpu_other = [
     for iid in local.other_ids : [
-      "AWS/EC2","CPUUtilization","InstanceId",iid,
+      "AWS/EC2", "CPUUtilization",
+      "InstanceId", iid,
       { label = "CPU % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
 }
 
-# --- Windows: Memory (must include objectname="Memory") ---
+# ---- Memory (Windows) ----
+# REQUIRED: objectname = "Memory"
 locals {
   mem_windows_other = [
     for iid in local.other_ids : [
-      "CWAgent","Memory % Committed Bytes In Use",
-      "InstanceId",iid,
-      "objectname","Memory",
+      "CWAgent", "Memory % Committed Bytes In Use",
+      "InstanceId", iid,
+      "objectname", "Memory",
       { label = "Mem Used % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
     ]
   ]
 }
 
-# --- Windows: Disk (use LogicalDisk % Free Space; must include objectname + instance=<drive>) ---
-# NOTE: No metric-math objects here (e.g., no { expression: "100 - ..." })
+# ---- Disk (Windows) ----
+# We **avoid metric-math** (100 - Free%) to satisfy “array of array of strings” rule.
+# REQUIRED: objectname = "LogicalDisk" AND instance = "<drive letter>"
 locals {
   disk_win_other_free = flatten([
     for iid in tolist(local.other_ids) : [
       for letter in local.win_disk_letters : [
-        "CWAgent","LogicalDisk % Free Space",
-        "InstanceId",iid,
-        "objectname","LogicalDisk",
-        "instance",letter,
+        "CWAgent", "LogicalDisk % Free Space",
+        "InstanceId", iid,
+        "objectname", "LogicalDisk",
+        "instance", letter,
         { label = "Disk Free % (${letter}) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
       ]
     ]
   ])
 }
 
-# --- Final Windows metrics list (arrays only; no bare objects) ---
+# ---- FINAL Windows metrics list for the "Other" window ----
+# (Arrays only; properties map is LAST in each entry; no bare objects or expressions)
 locals {
   metrics_other = concat(
     local.cpu_other,
