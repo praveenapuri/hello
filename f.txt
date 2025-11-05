@@ -88,3 +88,9 @@
     local.mem_windows_other,
     local.disk_win_other_free
   )
+
+
+   {
+│     "dataPath": "/widgets/1/properties/metrics/54",
+│     "message": "Should be array"
+│   },
