@@ -1,4 +1,61 @@
-aws ec2 describe-volumes \
-  --filters Name=attachment.instance-id,Values=$(curl -s http://169.254.169.254/latest/meta-data/instance-id) \
-  --query "Volumes[*].{ID:VolumeId,Device:Attachments[0].Device,State:State,AZ:AvailabilityZone}" \
-  --output table
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "Administrator",
+    "debug": false
+  },
+  "metrics": {
+    "append_dimensions": {
+      "InstanceId": "${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "LogicalDisk": {
+        "measurement": [
+          {"name": "% Free Space", "rename": "DiskFree", "unit": "Percent"},
+          {"name": "Free Megabytes", "rename": "DiskFreeMB", "unit": "Megabytes"}
+        ],
+        "metrics_collection_interval": 60,
+        "resources": ["*"]
+      },
+      "Memory": {
+        "measurement": [
+          {"name": "% Committed Bytes In Use", "rename": "MemoryUtilization", "unit": "Percent"},
+          {"name": "Available MBytes", "rename": "MemoryAvailableMB", "unit": "Megabytes"}
+        ],
+        "metrics_collection_interval": 60
+      },
+      "Paging File": {
+        "measurement": [
+          {"name": "% Usage", "rename": "PageFileUsage", "unit": "Percent"}
+        ],
+        "metrics_collection_interval": 60,
+        "resources": ["*"]
+      },
+      "Processor": {
+        "measurement": [
+          {"name": "% Processor Time", "rename": "CPUUtilization", "unit": "Percent"}
+        ],
+        "metrics_collection_interval": 60,
+        "resources": ["_Total"]
+      }
+    }
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "C:\\ProgramData\\Amazon\\EC2-Windows\\Launch\\Log\\Launch.log",
+            "log_group_name": "/aws/ec2/windows/launch",
+            "log_stream_name": "{instance_id}"
+          },
+          {
+            "file_path": "C:\\ProgramData\\Amazon\\AmazonCloudWatchAgent\\Logs\\amazon-cloudwatch-agent.log",
+            "log_group_name": "/aws/ec2/windows/cwagent",
+            "log_stream_name": "{instance_id}"
+          }
+        ]
+      }
+    }
+  }
+}
