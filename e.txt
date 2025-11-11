@@ -1,38 +1,4 @@
-{
-  "agent": {
-    "metrics_collection_interval": 60,
-    "logfile": "C:\\Program Files\\Amazon\\AmazonCloudWatchAgent\\Logs\\amazon-cloudwatch-agent.log"
-  },
-  "metrics": {
-    "metrics_collected": {
-      "Memory": {
-        "measurement": [
-          "% Committed Bytes In Use",
-          "Available MBytes"
-        ],
-        "metrics_collection_interval": 60,
-        "resources": [
-          "*"
-        ]
-      },
-      "LogicalDisk": {
-        "measurement": [
-          "% Free Space",
-          "Free Megabytes"
-        ],
-        "metrics_collection_interval": 60,
-        "resources": [
-          "*"
-        ]
-      }
-    },
-    "append_dimensions": {
-      "InstanceId": "${aws:InstanceId}"
-    },
-    "aggregation_dimensions": [
-      [
-        "InstanceId"
-      ]
-    ]
-  }
-}
+aws ec2 describe-volumes \
+  --filters Name=attachment.instance-id,Values=$(curl -s http://169.254.169.254/latest/meta-data/instance-id) \
+  --query "Volumes[*].{ID:VolumeId,Device:Attachments[0].Device,State:State,AZ:AvailabilityZone}" \
+  --output table
