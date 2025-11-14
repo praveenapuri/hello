@@ -23,7 +23,21 @@ data "aws_instance" "instance_details" {
 locals {
   # extract Lambda names from var
   lambda_function_names = var.lambda_function_names
-
+  win_disk_letters = ["C:"]
+  # Identify instance sets based on Name contains "chronicles" (case-insensitive)
+  csr_ids = toset([
+    for inst in values(data.aws_instance.instance_details) : inst.id
+    if length(regexall("chronicles", lower(try(inst.tags.Name, "")))) > 0
+  ])
+  other_ids = setsubtract(
+    toset([for inst in values(data.aws_instance.instance_details) : inst.id]),
+    local.csr_ids
+  )
+  # Friendly display name per instance
+  name_of = {
+    for inst in values(data.aws_instance.instance_details) :
+    inst.id => coalesce(try(inst.tags.Name, null), inst.id)
+  }
   # --- EC2 Metrics Generation (UNCHANGED) ---
   cpu_metrics = [
     for instance in values(data.aws_instance.instance_details) : [
@@ -51,7 +65,7 @@ locals {
   cs_instance_ids = toset([
     for inst in values(data.aws_instance.instance_details) : inst.id
     if length(
-      regexall("(chronicle|chronicles|support|\\brel\\b)", lower(lookup(inst.tags, "Name", "")))
+      regexall("chronicles", lower(lookup(inst.tags, "Name", "")))
     ) > 0
   ])
 
@@ -89,19 +103,25 @@ locals {
       {"label":"CPU - ${coalesce(instance.tags.Name, instance.id)}"}]
     if contains(local.other_instance_ids, instance.id)
   ]
-  mem_metrics_other = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["CWAgent","mem_used_percent","InstanceId",instance.id,
-      {"label":"%MEM_USED - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.other_instance_ids, instance.id)
+  mem_windows_other = [
+    for iid in local.other_ids : [
+      "CWAgent", "% Committed Bytes In Use",
+     # "CWAgent", "Available MBytes",
+      "InstanceId", iid,
+      "ObjectName", "Memory",
+      { label = "Mem Avail (MB) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
   ]
-  disk_metrics_other = [
-    for instance in values(data.aws_instance.instance_details) :
-    ["CWAgent","disk_used_percent","InstanceId",instance.id,
-      {"label":"%Disk - ${coalesce(instance.tags.Name, instance.id)}"}]
-    if contains(local.other_instance_ids, instance.id)
+  disk_win_other_free = [
+    for iid in tolist(local.other_ids) : [
+        "CWAgent","% Free Space",
+       # "CWAgent","Free Megabytes",
+        "InstanceId", iid,
+        "ObjectName", "LogicalDisk",
+        { label = "Disk Free % - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
+    ]
   ]
-  all_metrics_other    = concat(local.cpu_metrics_other, local.mem_metrics_other, local.disk_metrics_other)
+  all_metrics_other    = concat(local.cpu_metrics_other, local.mem_windows_other, local.disk_win_other_free)
   metrics_string_other = jsonencode(local.all_metrics_other)
 
   # --- Lambda Metrics Generation (UNCHANGED) ---
@@ -314,7 +334,8 @@ locals {
         "yAxis": { "left": { "min": 2, "max": 100 } },
         "liveData": true,
         "period": 300,
-        "title": "EC2-Health : Chronicle & Support/Rel"
+        "title": "EC2-Health : Chronicle & Support/Rel",
+        "timeRange": { "relative": 86400 }
       }
     },
     {
@@ -330,7 +351,8 @@ locals {
         "yAxis": { "left": { "min": 2, "max": 100 } },
         "liveData": true,
         "period": 300,
-        "title": "EC2-Health : Other Instances"
+        "title": "EC2-Health : Other Instances",
+        "timeRange": { "relative": 86400 }
       }
     },
     {
@@ -345,7 +367,8 @@ locals {
         "view": "timeSeries",
         "region" :  "${var.region}",
         "period": 300,
-        "title": "Lambda-Health"
+        "title": "Lambda-Health",
+        "timeRange": { "relative": 86400 }
       }
     },
 
@@ -361,7 +384,8 @@ locals {
         "view": "timeSeries",
         "region" :  "${var.region}",
         "period": 300,
-        "title": "EFS - PercentIOLimit & StorageBytes"
+        "title": "EFS - PercentIOLimit & StorageBytes",
+        "timeRange": { "relative": 86400 }
       }
     },
 
@@ -383,7 +407,8 @@ locals {
           }
         },
         "period": 60,
-        "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)"
+        "title": "FSx - StorageCapacityUtilization & FileServerDiskThroughputUtilization (%)",
+        "timeRange": { "relative": 86400 }
       }
     },
 
@@ -399,7 +424,8 @@ locals {
         "region": "${var.region}",
         "period": 60,
         "stat": "Sum",
-        "title": "SSM Jobs - RunCommand Status"
+        "title": "SSM Jobs - RunCommand Status",
+        "timeRange": { "relative": 86400 }
       }
     },
     {
