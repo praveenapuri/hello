@@ -1,41 +1,15 @@
-2025-11-11T19:01:59Z I! Starting AmazonCloudWatchAgent CWAgent/1.300061.0b1289 (go1.25.3; windows; amd64) with log file C:\ProgramData\Amazon\AmazonCloudWatchAgent\Logs\amazon-cloudwatch-agent.log with log target lumberjack
-2025-11-11T19:01:59Z I! AWS SDK log level not set
-2025-11-11T19:01:59Z I! creating new logs agent
-2025-11-11T19:01:59Z I! [logagent] starting
-2025-11-11T19:01:59Z I! {"caller":"service@v0.124.0/service.go:199","msg":"Setting up own telemetry..."}
-2025-11-11T19:01:59Z I! {"caller":"service@v0.124.0/service.go:244","msg":"Skipped telemetry setup."}
-2025-11-11T19:01:59Z I! {"caller":"service@v0.124.0/service.go:266","msg":"Starting CWAgent...","Version":"1.300061.0b1289","NumCPU":4}
-2025-11-11T19:01:59Z I! {"caller":"extensions/extensions.go:41","msg":"Starting extensions..."}
-2025-11-11T19:01:59Z I! {"caller":"extensions/extensions.go:45","msg":"Extension is starting..."}
-2025-11-11T19:01:59Z I! {"caller":"extensions/extensions.go:62","msg":"Extension started."}
-2025-11-11T19:01:59Z I! {"caller":"extensions/extensions.go:45","msg":"Extension is starting..."}
-2025-11-11T19:01:59Z I! {"caller":"extensions/extensions.go:62","msg":"Extension started."}
-2025-11-11T19:01:59Z I! cloudwatch: get unique roll up list []
-2025-11-11T19:01:59Z I! {"caller":"ec2tagger/ec2tagger.go:482","msg":"ec2tagger: Check EC2 Metadata."}
-2025-11-11T19:01:59Z I! cloudwatch: publish with ForceFlushInterval: 1m0s, Publish Jitter: 39.30173133s
-2025-11-11T19:01:59Z I! {"caller":"ec2tagger/ec2tagger.go:376","msg":"ec2tagger: EC2 tagger has started initialization."}
-2025-11-11T19:01:59Z I! {"caller":"service@v0.124.0/service.go:289","msg":"Everything is ready. Begin running and processing data."}
-2025-11-11T19:01:59Z I! {"caller":"ec2tagger/ec2tagger.go:547","msg":"ec2tagger: Initial retrieval of tags succeeded"}
-2025-11-11T19:01:59Z I! {"caller":"ec2tagger/ec2tagger.go:458","msg":"ec2tagger: EC2 tagger has started, finished initial retrieval of tags and Volumes"}
-2025-11-11T19:05:57Z I! {"caller":"ec2tagger/ec2tagger.go:265","msg":"ec2tagger: Refresh for volumes is no longer needed, stop refreshTicker."}
-2025-11-14T20:09:01Z I! Profiler is stopped during shutdown
-2025-11-14T20:09:15Z I! Starting AmazonCloudWatchAgent CWAgent/1.300061.0b1289 (go1.25.3; windows; amd64) with log file C:\ProgramData\Amazon\AmazonCloudWatchAgent\Logs\amazon-cloudwatch-agent.log with log target lumberjack
-2025-11-14T20:09:15Z I! AWS SDK log level not set
-2025-11-14T20:09:15Z I! creating new logs agent
-2025-11-14T20:09:15Z I! [logagent] starting
-2025-11-14T20:09:15Z I! {"caller":"service@v0.124.0/service.go:199","msg":"Setting up own telemetry..."}
-2025-11-14T20:09:15Z I! {"caller":"service@v0.124.0/service.go:244","msg":"Skipped telemetry setup."}
-2025-11-14T20:09:15Z I! {"caller":"service@v0.124.0/service.go:266","msg":"Starting CWAgent...","Version":"1.300061.0b1289","NumCPU":4}
-2025-11-14T20:09:15Z I! {"caller":"extensions/extensions.go:41","msg":"Starting extensions..."}
-2025-11-14T20:09:15Z I! {"caller":"extensions/extensions.go:45","msg":"Extension is starting..."}
-2025-11-14T20:09:15Z I! {"caller":"extensions/extensions.go:62","msg":"Extension started."}
-2025-11-14T20:09:15Z I! {"caller":"extensions/extensions.go:45","msg":"Extension is starting..."}
-2025-11-14T20:09:15Z I! {"caller":"extensions/extensions.go:62","msg":"Extension started."}
-2025-11-14T20:09:15Z I! cloudwatch: get unique roll up list []
-2025-11-14T20:09:15Z I! cloudwatch: publish with ForceFlushInterval: 1m0s, Publish Jitter: 36.359651405s
-2025-11-14T20:09:15Z I! {"caller":"ec2tagger/ec2tagger.go:482","msg":"ec2tagger: Check EC2 Metadata."}
-2025-11-14T20:09:15Z I! {"caller":"ec2tagger/ec2tagger.go:376","msg":"ec2tagger: EC2 tagger has started initialization."}
-2025-11-14T20:09:15Z I! {"caller":"service@v0.124.0/service.go:289","msg":"Everything is ready. Begin running and processing data."}
-2025-11-14T20:09:15Z I! {"caller":"ec2tagger/ec2tagger.go:547","msg":"ec2tagger: Initial retrieval of tags succeeded"}
-2025-11-14T20:09:15Z I! {"caller":"ec2tagger/ec2tagger.go:458","msg":"ec2tagger: EC2 tagger has started, finished initial retrieval of tags and Volumes"}
-2025-11-14T20:13:12Z I! {"caller":"ec2tagger/ec2tagger.go:265","msg":"ec2tagger: Refresh for volumes is no longer needed, stop refreshTicker."}
+{
+  "metrics": [
+    [
+      {
+        "expression": "SEARCH('{CWAgent,disk_used_percent,InstanceId,i-0123456789abcdef0}', 'Average', 300)",
+        "label": "All Volumes",
+        "id": "e1"
+      }
+    ]
+  ],
+  "view": "timeSeries",
+  "stat": "Average",
+  "region": "us-east-1",
+  "title": "Disk Usage for All Linux Volumes"
+}
