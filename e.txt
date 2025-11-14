@@ -1,5 +1,1 @@
-"metrics": [
-  [ "CWAgent", "disk_used_percent", "InstanceId", "i-0123456789abcdef0", "path", "/" ],
-  [ "CWAgent", "disk_used_percent", "InstanceId", "i-0123456789abcdef0", "path", "/var" ],
-  [ "CWAgent", "disk_used_percent", "InstanceId", "i-0123456789abcdef0", "path", "/mnt/data" ]
-]
+       [ ".", "disk_used_percent", "path", "/", "InstanceId", "i-03750376253209059", "ImageId", "ami-044c9a2c4b9fd5cfc", "InstanceType", "m6i.4xlarge", "device", "nvme0n1p2", "fstype", "xfs", { "region": "us-east-1" } ],
