@@ -1,14 +1,12 @@
-       [ ".", "disk_used_percent", "path", "/", "InstanceId", "i-03750376253209059", "ImageId", "ami-044c9a2c4b9fd5cfc", "InstanceType", "m6i.4xlarge", "device", "nvme0n1p2", "fstype", "xfs", { "region": "us-east-1" } ],
-
   disk_metrics_cs = [
     for instance in values(data.aws_instance.instance_details) :
     [
       {
-        expression = "SEARCH('{CWAgent,disk_used_percent,InstanceId,${instance.id}}', 'Average', 300)"
-        label      = "%Disk - ${coalesce(instance.tags.Name, instance.id)}"
+        # Pull *all* CWAgent disk_used_percent series for this instance (all volumes/paths)
+        expression = "SEARCH('{CWAgent,InstanceId} MetricName=\"disk_used_percent\" AND InstanceId=\"${instance.id}\"', 'Average', 300)"
         id         = "disk_${replace(instance.id, "-", "_")}"
+        label      = "%Disk - ${coalesce(instance.tags.Name, instance.id)}"
       }
     ]
     if contains(local.cs_instance_ids, instance.id)
   ]
-
