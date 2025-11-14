@@ -1,15 +1,5 @@
-{
-  "metrics": [
-    [
-      {
-        "expression": "SEARCH('{CWAgent,disk_used_percent,InstanceId,i-0123456789abcdef0}', 'Average', 300)",
-        "label": "All Volumes",
-        "id": "e1"
-      }
-    ]
-  ],
-  "view": "timeSeries",
-  "stat": "Average",
-  "region": "us-east-1",
-  "title": "Disk Usage for All Linux Volumes"
-}
+"metrics": [
+  [ "CWAgent", "disk_used_percent", "InstanceId", "i-0123456789abcdef0", "path", "/" ],
+  [ "CWAgent", "disk_used_percent", "InstanceId", "i-0123456789abcdef0", "path", "/var" ],
+  [ "CWAgent", "disk_used_percent", "InstanceId", "i-0123456789abcdef0", "path", "/mnt/data" ]
+]
