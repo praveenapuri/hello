@@ -1,8 +1,36 @@
-mem_windows_other = [
-    for iid in local.other_ids : [
-      "CWAgent", "Memory Available MBytes",
-      "InstanceId", iid,
-      "objectname", "Memory",
-      { label = "Mem Avail (MB) - ${lookup(local.name_of, iid, iid)}", stat = "Average", period = 300 }
-    ]
+variable "disk_paths" {
+  type = list(string)
+  default = [
+    "/",
+    "/dev",
+    "/run",
+    "/dev/shm",
+    "/epic",
+    "/epic/poc01",
+    "/epic/jrn",
+    "/epic/tmp",
+    "/epic/ply01",
+    "/epicfiles/nonprdfiles",
+    "/epicfiles/nonprdfiles/misc/efs",
+    "/sys/fs/cgroup",
+    "/run/user/1002",
+    "/run/user/1129801643",
+    "/run/user/1129801252",
+    "/run/user/1129801708"
   ]
+}
+
+  disk_metrics_cs = flatten([
+    for instance in values(data.aws_instance.instance_details) : [
+      for path in var.disk_paths : [
+        "CWAgent",
+        "disk_used_percent",
+        "InstanceId", instance.id,
+        "path", path,
+        {
+          label = "%Disk(${path}) - ${coalesce(instance.tags.Name, instance.id)}"
+        }
+      ]
+      if contains(local.cs_instance_ids, instance.id)
+    ]
+  ])
