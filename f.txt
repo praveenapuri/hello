@@ -1,17 +1,25 @@
-    {
-      "type": "metric",
-      "x": 0,
-      "y": 0,
-      "width": 12,
-      "height": 3,
-      "properties": {
-        "metrics": ${local.metrics_string_cs},
-        "view": "gauge",
-        "region": "${var.region}",
-        "yAxis": { "left": { "min": 2, "max": 100 } },
-        "liveData": true,
-        "period": 300,
-        "title": "EC2-Health : Chronicle & Support/Rel",
-        "timeRange": { "relative": 86400 }
+{
+  "type": "metric",
+  "x": 0,
+  "y": 0,
+  "width": 12,
+  "height": 3,
+  "properties": {
+    "metrics": ${local.metrics_string_cs},
+    "view": "gauge",
+    "region": "${var.region}",
+    "yAxis": { "left": { "min": 2, "max": 100 } },
+    "liveData": true,
+    "period": 300,
+    "title": "EC2-Health : Chronicle & Support/Rel",
+    "timeRange": { "relative": 86400 },
+
+    "thresholds": [
+      {
+        "value": 80,
+        "color": "#ff0000",
+        "label": "Critical > 80%"
       }
-    },
+    ]
+  }
+}
