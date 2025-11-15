@@ -1,19 +1,12 @@
-    "metrics": [
-        [ "CWAgent", "disk_used_percent", "path", "/run/user/1129801643", "InstanceId", "i-03b815a947dd72035", "ImageId", "ami-0cdebee29089a14f0", "InstanceType", "m6i.4xlarge", "device", "tmpfs", "fstype", "tmpfs" ],
-        [ "...", "/run/user/1002", ".", ".", ".", ".", ".", ".", ".", ".", ".", "." ],
-        [ "...", "/run", ".", ".", ".", ".", ".", ".", ".", ".", ".", "." ],
-        [ "...", "/epicfiles/nonprdfiles/misc/efs", ".", ".", ".", ".", ".", ".", ".", "fs-0e3792c3ec99399dc.efs.us-east-1.amazonaws.com:/", ".", "nfs4" ],
-        [ "...", "/epic", ".", ".", ".", ".", ".", ".", ".", "mapper/epicvg-epiclv", ".", "xfs" ],
-        [ "...", "/dev", ".", ".", ".", ".", ".", ".", ".", "devtmpfs", ".", "devtmpfs" ],
-        [ "...", "/epicfiles/nonprdfiles", ".", ".", ".", ".", ".", ".", ".", "mapper/epicvg-epicfileslv", ".", "xfs" ],
-        [ "...", "/dev/shm", ".", ".", ".", ".", ".", ".", ".", "tmpfs", ".", "tmpfs" ],
-        [ "...", "/epic/poc01", ".", ".", ".", ".", ".", ".", ".", "mapper/pocvg-poc01lv", ".", "xfs" ],
-        [ "...", "/sys/fs/cgroup", ".", ".", ".", ".", ".", ".", ".", "tmpfs", ".", "tmpfs" ],
-        [ "...", "/epic/jrn", ".", ".", ".", ".", ".", ".", ".", "mapper/epicvg-epicjrnlv", ".", "xfs" ],
-        [ "...", "/epic/ply01", ".", ".", ".", ".", ".", ".", ".", "mapper/plyvg-ply01lv", ".", "." ],
-        [ "...", "/", ".", ".", ".", ".", ".", ".", ".", "nvme0n1p2", ".", "." ],
-        [ "...", "/epic/tmp", ".", ".", ".", ".", ".", ".", ".", "mapper/epicvg-epictmplv", ".", "." ],
-        [ "...", "/run/user/1129801700", ".", ".", ".", ".", ".", ".", ".", "tmpfs", ".", "tmpfs" ],
-        [ "...", "/run/user/1129801252", ".", ".", ".", ".", ".", ".", ".", ".", ".", "." ],
-        [ "...", "/run/user/1129801708", ".", ".", ".", ".", ".", ".", ".", ".", ".", "." ]
-    ],
+  disk_metrics_cs = [
+    for instance in values(data.aws_instance.instance_details) :
+    [
+      {
+        # Fetch ALL CWAgent disk_used_percent metrics (all Linux paths/volumes) for this InstanceId
+        expression = "SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"${instance.id}\"', 'Average', 300)"
+        id         = "disk_${replace(instance.id, "-", "_")}"
+        label      = "%Disk - ${coalesce(instance.tags.Name, instance.id)}"
+      }
+    ]
+    if contains(local.cs_instance_ids, instance.id)
+  ]
