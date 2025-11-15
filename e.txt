@@ -2,8 +2,8 @@
     for instance in values(data.aws_instance.instance_details) :
     [
       {
-        # Pull *all* CWAgent disk_used_percent series for this instance (all volumes/paths)
-        expression = "SEARCH('{CWAgent,InstanceId} MetricName=\"disk_used_percent\" AND InstanceId=\"${instance.id}\"', 'Average', 300)"
+        # Fetch ALL CWAgent disk_used_percent metrics (all volumes/paths) for this InstanceId
+        expression = "SEARCH('{CWAgent,InstanceId,path} MetricName=\"disk_used_percent\" AND InstanceId=\"${instance.id}\"', 'Average', 300)"
         id         = "disk_${replace(instance.id, "-", "_")}"
         label      = "%Disk - ${coalesce(instance.tags.Name, instance.id)}"
       }
