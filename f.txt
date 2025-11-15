@@ -1,36 +1,17 @@
-variable "disk_paths" {
-  type = list(string)
-  default = [
-    "/",
-    "/dev",
-    "/run",
-    "/dev/shm",
-    "/epic",
-    "/epic/poc01",
-    "/epic/jrn",
-    "/epic/tmp",
-    "/epic/ply01",
-    "/epicfiles/nonprdfiles",
-    "/epicfiles/nonprdfiles/misc/efs",
-    "/sys/fs/cgroup",
-    "/run/user/1002",
-    "/run/user/1129801643",
-    "/run/user/1129801252",
-    "/run/user/1129801708"
-  ]
-}
-
-  disk_metrics_cs = flatten([
-    for instance in values(data.aws_instance.instance_details) : [
-      for path in var.disk_paths : [
-        "CWAgent",
-        "disk_used_percent",
-        "InstanceId", instance.id,
-        "path", path,
-        {
-          label = "%Disk(${path}) - ${coalesce(instance.tags.Name, instance.id)}"
-        }
-      ]
-      if contains(local.cs_instance_ids, instance.id)
-    ]
-  ])
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 12,
+      "height": 3,
+      "properties": {
+        "metrics": ${local.metrics_string_cs},
+        "view": "gauge",
+        "region": "${var.region}",
+        "yAxis": { "left": { "min": 2, "max": 100 } },
+        "liveData": true,
+        "period": 300,
+        "title": "EC2-Health : Chronicle & Support/Rel",
+        "timeRange": { "relative": 86400 }
+      }
+    },
