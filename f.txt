@@ -1,15 +1,57 @@
-resource "aws_cloudwatch_metric_alarm" "ssm_runcommand_failed" {
+resource "aws_cloudwatch_metric_alarm" "linux_high_disk_usage" {
   count               = var.Environment == "TEST" || var.Environment == "PROD" ? 1 : 0
-  alarm_name          = "ssm_runcommand_failed"
-  alarm_description   = "${var.env} | CRITICAL | Epic Payer Platform | SSM Run Command Failed"
+  alarm_name          = "linux_high_disk_usage"
+  alarm_description   = "${var.env} | CRITICAL | Epic Payer Platform | Linux Disk Usage High >= 80%"
   alarm_actions       = [local.us_east_1_alarm_funnel]
-  namespace           = "AWS/SSM-RunCommand"
-  metric_name         = "CommandsFailed"
-  statistic           = "Sum"
-  period              = 600
-  evaluation_periods  = 1
-  threshold           = 1
+
+  # Metric Math Expression: MAX of all Linux disk usage metrics
+  threshold_metric_id = "maxdisk"
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  actions_enabled     = false
-  tags                = merge(local.tags, local.cigna_tags)
+  threshold           = 80
+  evaluation_periods  = 1
+  period              = 300
+  actions_enabled     = true
+
+  metric_query {
+    id          = "maxdisk"
+    label       = "Max Disk Used Percent Across All Linux EC2"
+    return_data = true
+
+    # Only Linux filesystems (xfs/ext4)
+    # Matches ALL disk_used_percent metrics from CWAgent
+    expression = "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" AND (fstype=\"xfs\" OR fstype=\"ext4\")', 'Average', 300))"
+  }
+
+  tags = merge(local.tags, local.cigna_tags)
+}
+
+resource "aws_cloudwatch_metric_alarm" "linux_high_memory_usage" {
+  count               = var.Environment == "TEST" || var.Environment == "PROD" ? 1 : 0
+  alarm_name          = "linux_high_memory_usage"
+  alarm_description   = "${var.env} | CRITICAL | Epic Payer Platform | Linux Memory Usage High >= 80%"
+  alarm_actions       = [local.us_east_1_alarm_funnel]
+
+  threshold_metric_id = "maxmem"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  threshold           = 80
+  evaluation_periods  = 1
+  period              = 300
+  actions_enabled     = true
+
+  metric_query {
+    id          = "maxmem"
+    label       = "Max Memory Used Percent Across All Linux EC2"
+    return_data = true
+
+    # Linux-only filter → fstype does NOT apply to memory metrics,
+    # so we filter by Linux AMI pattern (x86_64 + AL2 / RHEL / Ubuntu)
+    #
+    # If your CWAgent includes the "ImageId" dimension (it usually does),
+    # we can filter by ImageId prefix (Linux AMIs start with "ami-").
+    #
+    # This will match ALL memory metrics across all Linux EC2 instances.
+    expression = "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"mem_used_percent\"', 'Average', 300))"
+  }
+
+  tags = merge(local.tags, local.cigna_tags)
 }
