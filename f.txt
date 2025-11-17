@@ -1,10 +1,8 @@
-data "aws_instances" "all_instances" {
-  # Optionally filter by tags if you want,
-  # or leave empty to include everything in the account/region.
-  # filter {
-  #   name   = "tag:Environment"
-  #   values = ["PROD", "TEST", "DEV"]  # <-- remove or adjust as you like
-  # }
+data "aws_instances" "windows" {
+  filter {
+    name = "platform"
+    values = ["windows"]
+  }
 }
 
 data "aws_instance" "instance_details" {
