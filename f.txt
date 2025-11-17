@@ -1,11 +1,26 @@
+data "aws_instances" "all_instances" {
+  # Optionally filter by tags if you want,
+  # or leave empty to include everything in the account/region.
+  # filter {
+  #   name   = "tag:Environment"
+  #   values = ["PROD", "TEST", "DEV"]  # <-- remove or adjust as you like
+  # }
+}
+
+data "aws_instance" "instance_details" {
+  for_each    = toset(data.aws_instances.all_instances.ids)
+  instance_id = each.key
+}
 resource "aws_cloudwatch_metric_alarm" "linux_instance_disk_high" {
-  # Only create alarms in TEST / PROD
-  for_each = var.Environment == "TEST" || var.Environment == "PROD"
-    ? { for id, inst in data.aws_instance.instance_details : id => inst if inst.platform != "windows" }
-    : {}
+  # All non-Windows instances get an alarm
+  for_each = {
+    for id, inst in data.aws_instance.instance_details :
+    id => inst
+    if inst.platform != "windows"
+  }
 
   alarm_name        = "linux_high_disk_usage_${each.key}"
-  alarm_description = "${var.env} | CRITICAL | Epic Payer Platform | Linux Disk Usage High >= 80% on ${lookup(each.value.tags, "Name", each.key)}"
+  alarm_description = "CRITICAL | Epic Payer Platform | Linux Disk Usage High >= 80% on ${lookup(each.value.tags, "Name", each.key)}"
   alarm_actions     = [local.us_east_1_alarm_funnel]
 
   namespace           = "CWAgent"
@@ -18,7 +33,7 @@ resource "aws_cloudwatch_metric_alarm" "linux_instance_disk_high" {
   treat_missing_data  = "notBreaching"
   actions_enabled     = true
 
-  # Root filesystem; change path if you care about a different mount
+  # Root filesystem (change to /epic, etc., if you prefer)
   dimensions = {
     InstanceId = each.key
     path       = "/"
@@ -27,15 +42,15 @@ resource "aws_cloudwatch_metric_alarm" "linux_instance_disk_high" {
   tags = merge(local.tags, local.cigna_tags)
 }
 
-
 resource "aws_cloudwatch_metric_alarm" "linux_instance_memory_high" {
-  # Only create alarms in TEST / PROD
-  for_each = var.Environment == "TEST" || var.Environment == "PROD"
-    ? { for id, inst in data.aws_instance.instance_details : id => inst if inst.platform != "windows" }
-    : {}
+  for_each = {
+    for id, inst in data.aws_instance.instance_details :
+    id => inst
+    if inst.platform != "windows"
+  }
 
   alarm_name        = "linux_high_memory_usage_${each.key}"
-  alarm_description = "${var.env} | CRITICAL | Epic Payer Platform | Linux Memory Usage High >= 80% on ${lookup(each.value.tags, "Name", each.key)}"
+  alarm_description = "CRITICAL | Epic Payer Platform | Linux Memory Usage High >= 80% on ${lookup(each.value.tags, "Name", each.key)}"
   alarm_actions     = [local.us_east_1_alarm_funnel]
 
   namespace           = "CWAgent"
