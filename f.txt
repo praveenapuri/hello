@@ -1,32 +1,15 @@
-variable "alarm_sns_topic_arn" {
-  type        = string
-  description = "SNS topic ARN for fleet disk alarm notifications"
-  default     = null
-}
-
-resource "aws_cloudwatch_metric_alarm" "disk_all_linux" {
-  alarm_name          = "HighDiskUsage-AllLinux"
-  alarm_description   = "Alarm if any Linux instance has disk_used_percent >= 80%"
-  comparison_operator = "GreaterThanOrEqualToThreshold"
+resource "aws_cloudwatch_metric_alarm" "ssm_runcommand_failed" {
+  count               = var.Environment == "TEST" || var.Environment == "PROD" ? 1 : 0
+  alarm_name          = "ssm_runcommand_failed"
+  alarm_description   = "${var.env} | CRITICAL | Epic Payer Platform | SSM Run Command Failed"
+  alarm_actions       = [local.us_east_1_alarm_funnel]
+  namespace           = "AWS/SSM-RunCommand"
+  metric_name         = "CommandsFailed"
+  statistic           = "Sum"
+  period              = 600
   evaluation_periods  = 1
-  threshold           = 80
-  threshold_metric_id = "e1"
-  treat_missing_data  = "notBreaching"
-
-  period = 300  # 5 minutes, must match the SEARCH() period
-
-  # Metric math query: max disk_used_percent across all Linux disks
-  metric_query {
-    id          = "e1"
-    # Filters:
-    #  - Namespace="CWAgent"
-    #  - MetricName="disk_used_percent"
-    #  - fstype="xfs" (Linux filesystems; adjust if needed)
-    expression  = "MAX(SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" AND fstype=\"xfs\"', 'Average', 300))"
-    label       = "Max disk_used_percent (all Linux disks)"
-    return_data = true
-  }
-
-  alarm_actions = var.alarm_sns_topic_arn != null ? [var.alarm_sns_topic_arn] : []
-  ok_actions    = var.alarm_sns_topic_arn != null ? [var.alarm_sns_topic_arn] : []
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  actions_enabled     = false
+  tags                = merge(local.tags, local.cigna_tags)
 }
