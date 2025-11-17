@@ -1,21 +1,26 @@
-data "aws_instances" "windows" {
+# All running instances (both Windows + Linux)
+data "aws_instances" "all_running" {
   filter {
-    name = "platform"
-    values = ["windows"]
+    name   = "instance-state-name"
+    values = ["running"]
   }
 }
 
-data "aws_instance" "instance_details" {
-  for_each    = toset(data.aws_instances.all_instances.ids)
+locals {
+  # Linux = all_running - windows
+  linux_instance_ids = setsubtract(
+    toset(data.aws_instances.all_running.ids),
+    toset(data.aws_instances.windows.ids),
+  )
+}
+
+# Get full details for each Linux instance
+data "aws_instance" "linux_details" {
+  for_each    = local.linux_instance_ids
   instance_id = each.key
 }
 resource "aws_cloudwatch_metric_alarm" "linux_instance_disk_high" {
-  # All non-Windows instances get an alarm
-  for_each = {
-    for id, inst in data.aws_instance.instance_details :
-    id => inst
-    if inst.platform != "windows"
-  }
+  for_each = data.aws_instance.linux_details
 
   alarm_name        = "linux_high_disk_usage_${each.key}"
   alarm_description = "CRITICAL | Epic Payer Platform | Linux Disk Usage High >= 80% on ${lookup(each.value.tags, "Name", each.key)}"
@@ -31,7 +36,7 @@ resource "aws_cloudwatch_metric_alarm" "linux_instance_disk_high" {
   treat_missing_data  = "notBreaching"
   actions_enabled     = true
 
-  # Root filesystem (change to /epic, etc., if you prefer)
+  # Watching root filesystem; change path if you want a different one
   dimensions = {
     InstanceId = each.key
     path       = "/"
@@ -39,13 +44,8 @@ resource "aws_cloudwatch_metric_alarm" "linux_instance_disk_high" {
 
   tags = merge(local.tags, local.cigna_tags)
 }
-
 resource "aws_cloudwatch_metric_alarm" "linux_instance_memory_high" {
-  for_each = {
-    for id, inst in data.aws_instance.instance_details :
-    id => inst
-    if inst.platform != "windows"
-  }
+  for_each = data.aws_instance.linux_details
 
   alarm_name        = "linux_high_memory_usage_${each.key}"
   alarm_description = "CRITICAL | Epic Payer Platform | Linux Memory Usage High >= 80% on ${lookup(each.value.tags, "Name", each.key)}"
