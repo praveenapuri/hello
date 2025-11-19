@@ -1,3 +1,26 @@
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+
+  # If you use remote state, uncomment and fill in:
+  # backend "s3" {
+  #   bucket         = "your-state-bucket"
+  #   key            = "epic_lb_routes_tst/terraform.tfstate"
+  #   region         = "us-east-1"
+  #   dynamodb_table = "terraform-lock"
+  # }
+}
+
+provider "aws" {
+  region = var.region
+}
+
 ########################################
 # Target Groups and Attachments
 ########################################
@@ -246,62 +269,143 @@ resource "aws_lb_target_group_attachment" "intrcnnct_eds_tst" {
 resource "aws_lb_listener_rule" "hsw_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 31
-  action { type = "forward" target_group_arn = aws_lb_target_group.hsw_tst.arn }
-  condition { path_pattern { values = ["/HSWeb_TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.hsw_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/HSWeb_TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "hsw_oldtst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 32
-  action { type = "forward" target_group_arn = aws_lb_target_group.hsw_oldtst.arn }
-  condition { path_pattern { values = ["/HSWeb_OLDTST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.hsw_oldtst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/HSWeb_OLDTST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_evt_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 33
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_evt_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-Event-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_evt_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-Event-TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_evtws_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 34
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_evtws_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-EventWS-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_evtws_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EventWS-TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_oauth2_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 35
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_oauth2_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-OAuth2-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_oauth2_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-OAuth2-TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_edi_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 36
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_edi_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-EDI-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_edi_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EDI-TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_outgoing_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 37
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_outgoing_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-Outgoing-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_outgoing_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-Outgoing-TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_wsh_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 39
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_wsh_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-WSH-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_wsh_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-WSH-TST*"]
+    }
+  }
 }
 
 resource "aws_lb_listener_rule" "intrcnnct_eds_tst" {
   listener_arn = aws_lb_listener.default.arn
   priority     = 41
-  action { type = "forward" target_group_arn = aws_lb_target_group.intrcnnct_eds_tst.arn }
-  condition { path_pattern { values = ["/Interconnect-EDS-TST*"] } }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_eds_tst.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EDS-TST*"]
+    }
+  }
 }
