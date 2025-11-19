@@ -1,12 +1,803 @@
-  disk_metrics_cs = [
-    for instance in values(data.aws_instance.instance_details) :
-    [
-      {
-        # Fetch ALL CWAgent disk_used_percent metrics (all Linux paths/volumes) for this InstanceId
-        expression = "SEARCH('Namespace=\"CWAgent\" MetricName=\"disk_used_percent\" InstanceId=\"${instance.id}\"', 'Average', 300)"
-        id         = "disk_${replace(instance.id, "-", "_")}"
-        label      = "%Disk - ${coalesce(instance.tags.Name, instance.id)}"
-      }
-    ]
-    if contains(local.cs_instance_ids, instance.id)
-  ]
+########################################
+# 1) HSW-POC
+resource "aws_lb_target_group" "hsw_poc" {
+  name        = "${var.Name}-hsw-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/HSWeb_POC/health/healthHandler.ashx?mode=loadbalancer"
+    protocol = "HTTPS"
+  }
+
+  stickiness {
+    type            = "lb_cookie"
+    enabled         = true
+    cookie_duration = 604800
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-hsw-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "hsw_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.hsw_poc.arn
+  target_id        = element(["10.190.180.73", "10.190.180.94", "10.190.180.122"], count.index)
+  port             = 443
+}
+
+########################################
+# 2) HSW-PLY
+resource "aws_lb_target_group" "hsw_ply" {
+  name        = "${var.Name}-hsw-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/HSWeb_PLY/health/healthHandler.ashx?mode=loadbalancer"
+    protocol = "HTTPS"
+  }
+
+  stickiness {
+    type            = "lb_cookie"
+    enabled         = true
+    cookie_duration = 604800
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-hsw-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "hsw_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.hsw_ply.arn
+  target_id        = element(["10.190.180.73", "10.190.180.94", "10.190.180.122"], count.index)
+  port             = 443
+}
+
+########################################
+# 3) WBS-POC
+resource "aws_lb_target_group" "wbs_poc" {
+  name        = "${var.Name}-wbs-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/WBS_POC/Health?env=POC"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-wbs-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "wbs_poc" {
+  count            = 4
+  target_group_arn = aws_lb_target_group.wbs_poc.arn
+  target_id        = element(["10.190.180.78", "10.190.180.88", "10.190.180.113", "10.190.180.115"], count.index)
+  port             = 443
+}
+
+########################################
+# 4) WBS-PLY
+resource "aws_lb_target_group" "wbs_ply" {
+  name        = "${var.Name}-wbs-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/WBS_PLY/Health?env=PLY"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-wbs-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "wbs_ply" {
+  count            = 4
+  target_group_arn = aws_lb_target_group.wbs_ply.arn
+  target_id        = element(["10.190.180.78", "10.190.180.88", "10.190.180.113", "10.190.180.115"], count.index)
+  port             = 443
+}
+
+########################################
+# 5) Interconnect-EDI-POC
+resource "aws_lb_target_group" "intrcnnct_edi_poc" {
+  name        = "${var.Name}-intrcnnct-edi-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-EDI-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-edi-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_edi_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_edi_poc.arn
+  target_id        = element(["10.190.180.107", "10.190.180.118", "10.190.180.121"], count.index)
+  port             = 443
+}
+
+########################################
+# 6) Interconnect-Outgoing-POC
+resource "aws_lb_target_group" "intrcnnct_outgoing_poc" {
+  name        = "${var.Name}-intrcnnct-outgoing-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-Outgoing-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-outgoing-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_outgoing_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_outgoing_poc.arn
+  target_id        = element(["10.190.180.107", "10.190.180.118", "10.190.180.121"], count.index)
+  port             = 443
+}
+
+########################################
+# 7) Interconnect-WSH-POC
+resource "aws_lb_target_group" "intrcnnct_wsh_poc" {
+  name        = "${var.Name}-intrcnnct-wsh-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-WSH-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-wsh-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_wsh_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_wsh_poc.arn
+  target_id        = element(["10.190.180.107", "10.190.180.118", "10.190.180.121"], count.index)
+  port             = 443
+}
+
+########################################
+# 8) Interconnect-EDI-PLY
+resource "aws_lb_target_group" "intrcnnct_edi_ply" {
+  name        = "${var.Name}-intrcnnct-edi-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-EDI-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-edi-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_edi_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_edi_ply.arn
+  target_id        = element(["10.190.180.107", "10.190.180.118", "10.190.180.121"], count.index)
+  port             = 443
+}
+
+########################################
+# 9) Interconnect-Outgoing-PLY
+resource "aws_lb_target_group" "intrcnnct_outgoing_ply" {
+  name        = "${var.Name}-intrcnnct-outgoing-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-Outgoing-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-outgoing-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_outgoing_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_outgoing_ply.arn
+  target_id        = element(["10.190.180.107", "10.190.180.118", "10.190.180.121"], count.index)
+  port             = 443
+}
+
+########################################
+# 10) Interconnect-WSH-PLY
+resource "aws_lb_target_group" "intrcnnct_wsh_ply" {
+  name        = "${var.Name}-intrcnnct-wsh-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-WSH-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-wsh-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_wsh_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_wsh_ply.arn
+  target_id        = element(["10.190.180.107", "10.190.180.118", "10.190.180.121"], count.index)
+  port             = 443
+}
+
+########################################
+# 11) Interconnect-Event-POC
+resource "aws_lb_target_group" "intrcnnct_evt_poc" {
+  name        = "${var.Name}-intrcnnct-evt-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-Event-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-event-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_evt_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_evt_poc.arn
+  target_id        = element(["10.190.180.87", "10.190.180.91", "10.190.180.86"], count.index)
+  port             = 443
+}
+
+########################################
+# 12) Interconnect-EventWS-POC
+resource "aws_lb_target_group" "intrcnnct_evtws_poc" {
+  name        = "${var.Name}-intrcnnct-evtws-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-EventWS-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-eventws-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_evtws_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_evtws_poc.arn
+  target_id        = element(["10.190.180.87", "10.190.180.91", "10.190.180.86"], count.index)
+  port             = 443
+}
+
+########################################
+# 13) Interconnect-OAuth2-POC
+resource "aws_lb_target_group" "intrcnnct_oauth2_poc" {
+  name        = "${var.Name}-intrcnnct-oauth2-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-OAuth2-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-oauth2-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_oauth2_poc" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_oauth2_poc.arn
+  target_id        = element(["10.190.180.87", "10.190.180.91", "10.190.180.86"], count.index)
+  port             = 443
+}
+
+########################################
+# 14) Interconnect-Event-PLY
+resource "aws_lb_target_group" "intrcnnct_evt_ply" {
+  name        = "${var.Name}-intrcnnct-evt-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-Event-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-event-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_evt_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_evt_ply.arn
+  target_id        = element(["10.190.180.87", "10.190.180.91", "10.190.180.86"], count.index)
+  port             = 443
+}
+
+########################################
+# 15) Interconnect-EventWS-PLY
+resource "aws_lb_target_group" "intrcnnct_evtws_ply" {
+  name        = "${var.Name}-intrcnnct-evtws-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-EventWS-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-eventws-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_evtws_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_evtws_ply.arn
+  target_id        = element(["10.190.180.87", "10.190.180.91", "10.190.180.86"], count.index)
+  port             = 443
+}
+
+########################################
+# 16) Interconnect-OAuth2-PLY
+resource "aws_lb_target_group" "intrcnnct_oauth2_ply" {
+  name        = "${var.Name}-intrcnnct-oauth2-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-OAuth2-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-oauth2-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_oauth2_ply" {
+  count            = 3
+  target_group_arn = aws_lb_target_group.intrcnnct_oauth2_ply.arn
+  target_id        = element(["10.190.180.87", "10.190.180.91", "10.190.180.86"], count.index)
+  port             = 443
+}
+
+########################################
+# 20) Interconnect-EDS-PLY
+resource "aws_lb_target_group" "intrcnnct_eds_ply" {
+  name        = "${var.Name}-intrcnnct-eds-ply-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-EDS-PLY/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-eds-ply-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_eds_ply" {
+  count            = 4
+  target_group_arn = aws_lb_target_group.intrcnnct_eds_ply.arn
+  target_id        = element(["10.190.180.120", "10.190.180.70", "10.190.180.126", "10.190.180.77"], count.index)
+  port             = 443
+}
+
+########################################
+# 21) Interconnect-EDS-POC
+resource "aws_lb_target_group" "intrcnnct_eds_poc" {
+  name        = "${var.Name}-intrcnnct-eds-poc-tg"
+  port        = 443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    interval = 60
+    timeout  = 30
+    path     = "/Interconnect-EDS-POC/httplistener.ashx"
+    protocol = "HTTPS"
+  }
+
+  tags = merge(local.tags, { Name = "${var.Name}-interconnect-eds-poc-tg" })
+}
+
+resource "aws_lb_target_group_attachment" "intrcnnct_eds_poc" {
+  count            = 4
+  target_group_arn = aws_lb_target_group.intrcnnct_eds_poc.arn
+  target_id        = element(["10.190.180.120", "10.190.180.70", "10.190.180.126", "10.190.180.77"], count.index)
+  port             = 443
+}
+
+########################################
+# 1) HSW-POC
+resource "aws_lb_listener_rule" "hsw_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 31
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.hsw_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/HSWeb_POC*"]
+    }
+  }
+}
+
+########################################
+# 2) HSW-PLY
+resource "aws_lb_listener_rule" "hsw_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 32
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.hsw_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/HSWeb_PLY*"]
+    }
+  }
+}
+
+########################################
+# 3) WBS-POC
+resource "aws_lb_listener_rule" "wbs_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 33
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.wbs_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/WBS_POC*"]
+    }
+  }
+}
+
+########################################
+# 4) WBS-PLY
+resource "aws_lb_listener_rule" "wbs_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 34
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.wbs_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/WBS_PLY*"]
+    }
+  }
+}
+
+########################################
+# 5) Interconnect-EDI-POC
+resource "aws_lb_listener_rule" "intrcnnct_edi_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 35
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_edi_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EDI-POC*"]
+    }
+  }
+}
+
+########################################
+# 6) Interconnect-Outgoing-POC
+resource "aws_lb_listener_rule" "intrcnnct_outgoing_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 36
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_outgoing_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-Outgoing-POC*"]
+    }
+  }
+}
+
+########################################
+# 7) Interconnect-WSH-POC
+resource "aws_lb_listener_rule" "intrcnnct_wsh_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 37
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_wsh_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-WSH-POC*"]
+    }
+  }
+}
+
+########################################
+# 8) Interconnect-EDI-PLY
+resource "aws_lb_listener_rule" "intrcnnct_edi_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 38
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_edi_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EDI-PLY*"]
+    }
+  }
+}
+
+########################################
+# 9) Interconnect-Outgoing-PLY
+resource "aws_lb_listener_rule" "intrcnnct_outgoing_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 39
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_outgoing_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-Outgoing-PLY*"]
+    }
+  }
+}
+
+########################################
+# 10) Interconnect-WSH-PLY
+resource "aws_lb_listener_rule" "intrcnnct_wsh_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 40
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_wsh_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-WSH-PLY*"]
+    }
+  }
+}
+
+########################################
+# 11) Interconnect-Event-POC
+resource "aws_lb_listener_rule" "intrcnnct_evt_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 41
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_evt_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-Event-POC*"]
+    }
+  }
+}
+
+########################################
+# 12) Interconnect-EventWS-POC
+resource "aws_lb_listener_rule" "intrcnnct_evtws_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 42
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_evtws_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EventWS-POC*"]
+    }
+  }
+}
+
+########################################
+# 13) Interconnect-OAuth2-POC
+resource "aws_lb_listener_rule" "intrcnnct_oauth2_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 43
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_oauth2_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-OAuth2-POC*"]
+    }
+  }
+}
+
+########################################
+# 14) Interconnect-Event-PLY
+resource "aws_lb_listener_rule" "intrcnnct_evt_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 44
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_evt_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-Event-PLY*"]
+    }
+  }
+}
+
+########################################
+# 15) Interconnect-EventWS-PLY
+resource "aws_lb_listener_rule" "intrcnnct_evtws_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 45
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_evtws_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EventWS-PLY*"]
+    }
+  }
+}
+
+########################################
+# 16) Interconnect-OAuth2-PLY
+resource "aws_lb_listener_rule" "intrcnnct_oauth2_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 46
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_oauth2_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-OAuth2-PLY*"]
+    }
+  }
+}
+
+########################################
+# 20) Interconnect-EDS-PLY
+resource "aws_lb_listener_rule" "intrcnnct_eds_ply" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 50
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_eds_ply.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EDS-PLY*"]
+    }
+  }
+}
+
+########################################
+# 21) Interconnect-EDS-POC
+resource "aws_lb_listener_rule" "intrcnnct_eds_poc" {
+  listener_arn = aws_lb_listener.default.arn
+  priority     = 51
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.intrcnnct_eds_poc.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/Interconnect-EDS-POC*"]
+    }
+  }
+}
