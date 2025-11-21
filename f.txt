@@ -1,411 +1,56 @@
-terraform {
-  required_version = ">= 1.0.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-
-  # If you use remote state, uncomment and fill in:
-  # backend "s3" {
-  #   bucket         = "your-state-bucket"
-  #   key            = "epic_lb_routes_tst/terraform.tfstate"
-  #   region         = "us-east-1"
-  #   dynamodb_table = "terraform-lock"
-  # }
-}
-
-provider "aws" {
-  region = var.region
-}
-
-########################################
-# Target Groups and Attachments
-########################################
-
-# 1) HSW-TST
-resource "aws_lb_target_group" "hsw_tst" {
-  name        = "${var.Name}-hsw_tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/HSWeb_TST/health/healthHandler.ashx?mode=loadbalancer"
-    protocol = "HTTPS"
-  }
-
-  stickiness {
-    type            = "lb_cookie"
-    enabled         = true
-    cookie_duration = 604800
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-hsw-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "hsw_tst" {
-  count            = 2
-  target_group_arn = aws_lb_target_group.hsw_tst.arn
-  target_id        = element(["10.190.201.199", "10.190.201.230"], count.index)
-  port             = 443
-}
-
-# 2) HSW-OLDTST
-resource "aws_lb_target_group" "hsw_oldtst" {
-  name        = "${var.Name}-hsw_oldtst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Hyperspace_OLDTST/health/healthHandler.ashx?mode=loadbalancer"
-    protocol = "HTTPS"
-  }
-
-  stickiness {
-    type            = "lb_cookie"
-    enabled         = true
-    cookie_duration = 604800
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-hsw-oldtst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "hsw_oldtst" {
-  count            = 2
-  target_group_arn = aws_lb_target_group.hsw_oldtst.arn
-  target_id        = element(["10.190.201.199", "10.190.201.230"], count.index)
-  port             = 443
-}
-
-# 3) Interconnect-Event-TST
-resource "aws_lb_target_group" "intrcnnct_evt_tst" {
-  name        = "${var.Name}-intrcnnct-evt-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-Event-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-event-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_evt_tst" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.intrcnnct_evt_tst.arn
-  target_id        = element(["10.190.201.206", "10.190.201.202", "10.190.201.252"], count.index)
-  port             = 443
-}
-
-# 4) Interconnect-EventWS-TST
-resource "aws_lb_target_group" "intrcnnct_evtws_tst" {
-  name        = "${var.Name}-intrcnnct-evtws-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-EventWS-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-eventws-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_evtws_tst" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.intrcnnct_evtws_tst.arn
-  target_id        = element(["10.190.201.206", "10.190.201.202", "10.190.201.252"], count.index)
-  port             = 443
-}
-
-# 5) Interconnect-OAuth2-TST
-resource "aws_lb_target_group" "intrcnnct_oauth2_tst" {
-  name        = "${var.Name}-intrcnnct-oauth2-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-OAuth2-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-oauth2-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_oauth2_tst" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.intrcnnct_oauth2_tst.arn
-  target_id        = element(["10.190.201.206", "10.190.201.202", "10.190.201.252"], count.index)
-  port             = 443
-}
-
-# 6) Interconnect-EDI-TST
-resource "aws_lb_target_group" "intrcnnct_edi_tst" {
-  name        = "${var.Name}-intrcnnct-edi-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-EDI-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-edi-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_edi_tst" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.intrcnnct_edi_tst.arn
-  target_id        = element(["10.190.201.253", "10.190.201.238", "10.190.201.205"], count.index)
-  port             = 443
-}
-
-# 7) Interconnect-Outgoing-TST
-resource "aws_lb_target_group" "intrcnnct_outgoing_tst" {
-  name        = "${var.Name}-intrcnnct-outgoing-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-Outgoing-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-outgoing-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_outgoing_tst" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.intrcnnct_outgoing_tst.arn
-  target_id        = element(["10.190.201.253", "10.190.201.238", "10.190.201.205"], count.index)
-  port             = 443
-}
-
-# 9) Interconnect-WSH-TST
-resource "aws_lb_target_group" "intrcnnct_wsh_tst" {
-  name        = "${var.Name}-intrcnnct-wsh-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-WSH-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-wsh-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_wsh_tst" {
-  count            = 3
-  target_group_arn = aws_lb_target_group.intrcnnct_wsh_tst.arn
-  target_id        = element(["10.190.201.253", "10.190.201.238", "10.190.201.205"], count.index)
-  port             = 443
-}
-
-# 11) Interconnect-EDS-TST
-resource "aws_lb_target_group" "intrcnnct_eds_tst" {
-  name        = "${var.Name}-intrcnnct-eds-tst-tg"
-  port        = 443
-  protocol    = "HTTPS"
-  target_type = "ip"
-  vpc_id      = var.vpc_id
-
-  health_check {
-    interval = 60
-    timeout  = 30
-    path     = "/Interconnect-EDS-TST/httplistener.ashx"
-    protocol = "HTTPS"
-  }
-
-  tags = merge(local.tags, { Name = "${var.Name}-interconnect-eds-tst-tg" })
-}
-
-resource "aws_lb_target_group_attachment" "intrcnnct_eds_tst" {
-  count            = 4
-  target_group_arn = aws_lb_target_group.intrcnnct_eds_tst.arn
-  target_id        = element(["10.190.201.197", "10.190.201.254", "10.190.201.215", "10.190.201.248"], count.index)
-  port             = 443
-}
-
-########################################
-# Listener Rules
-########################################
-
-resource "aws_lb_listener_rule" "hsw_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 31
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.hsw_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/HSWeb_TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "hsw_oldtst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 32
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.hsw_oldtst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/HSWeb_OLDTST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_evt_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 33
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_evt_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-Event-TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_evtws_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 34
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_evtws_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-EventWS-TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_oauth2_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 35
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_oauth2_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-OAuth2-TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_edi_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 36
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_edi_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-EDI-TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_outgoing_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 37
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_outgoing_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-Outgoing-TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_wsh_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 39
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_wsh_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-WSH-TST*"]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "intrcnnct_eds_tst" {
-  listener_arn = aws_lb_listener.default.arn
-  priority     = 41
-
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.intrcnnct_eds_tst.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/Interconnect-EDS-TST*"]
-    }
-  }
-}
+sh-4.4$ lsblk
+NAME                   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+nvme0n1                259:0    0  300G  0 disk
+├─nvme0n1p1            259:2    0    1M  0 part
+└─nvme0n1p2            259:3    0  300G  0 part /
+nvme5n1                259:1    0    1T  0 disk
+└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
+nvme3n1                259:4    0  2.7T  0 disk
+├─prdjrnvg-epicjrnlv   253:3    0  2.4T  0 lvm  /epic/jrn
+└─prdjrnvg-epicfileslv 253:4    0  299G  0 lvm  /epicfiles
+nvme4n1                259:5    0  300G  0 disk
+├─prdinstvg-epiclv     253:0    0   20G  0 lvm  /epic
+├─prdinstvg-epictmplv  253:1    0   50G  0 lvm  /epic/tmp
+└─prdinstvg-epicprdlv  253:2    0  130G  0 lvm  /epic/prd
+nvme1n1                259:6    0    1T  0 disk
+└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
+nvme6n1                259:7    0    1T  0 disk
+└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
+nvme2n1                259:8    0    1T  0 disk
+└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
+sh-4.4$
+
+sh-4.4$ sudo nvme list
+Node                  SN                   Model                                    Namespace Usage                      Format           FW Rev
+--------------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
+/dev/nvme0n1          vol0169d82b5f4376cca Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
+/dev/nvme1n1          vol01c91a8fe65e305af Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
+/dev/nvme2n1          vol0b373880acf425ac5 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
+/dev/nvme3n1          vol07909a71211218f78 Amazon Elastic Block Store               1           2.90  TB /   2.90  TB    512   B +  0 B   2.0
+/dev/nvme4n1          vol0b2032b4691bc236c Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
+/dev/nvme5n1          vol05e8d4ab880e1d167 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
+/dev/nvme6n1          vol0fe9676b93ff51819 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
+
+sh-4.4$ sudo pvs
+  PV           VG        Fmt  Attr PSize     PFree
+  /dev/nvme1n1 prdvg     lvm2 a--  <1024.00g <186.50g
+  /dev/nvme2n1 prdvg     lvm2 a--  <1024.00g <186.50g
+  /dev/nvme3n1 prdjrnvg  lvm2 a--     <2.64t 1020.00m
+  /dev/nvme4n1 prdinstvg lvm2 a--   <300.00g <100.00g
+  /dev/nvme5n1 prdvg     lvm2 a--  <1024.00g <186.50g
+  /dev/nvme6n1 prdvg     lvm2 a--  <1024.00g <186.50g
+  
+  sh-4.4$ sudo vgs
+  VG        #PV #LV #SN Attr   VSize    VFree
+  prdinstvg   1   3   0 wz--n- <300.00g <100.00g
+  prdjrnvg    1   2   0 wz--n-   <2.64t 1020.00m
+  prdvg       4   1   0 wz--n-   <4.00t  745.98g
+  
+  sh-4.4$ sudo lvs
+  LV          VG        Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+  epiclv      prdinstvg -wi-ao----  20.00g
+  epicprdlv   prdinstvg -wi-ao---- 130.00g
+  epictmplv   prdinstvg -wi-ao----  50.00g
+  epicfileslv prdjrnvg  -wi-ao---- 299.00g
+  epicjrnlv   prdjrnvg  -wi-ao----   2.34t
+  prd01lv     prdvg     -wi-ao----   3.27t
