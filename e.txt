@@ -1,72 +1,33 @@
-sh-4.4$ lsblk
-NAME                  MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
-nvme0n1               259:0    0  300G  0 disk
-├─nvme0n1p1           259:5    0    1M  0 part
-└─nvme0n1p2           259:6    0  300G  0 part /
-nvme1n1               259:1    0  500G  0 disk
-└─epicjrnvg-epicjrnlv 253:4    0  450G  0 lvm  /epic/jrn
-nvme2n1               259:2    0  300G  0 disk
-nvme3n1               259:3    0    1T  0 disk
-└─supvg-sup01lv       253:5    0  3.3T  0 lvm  /epic/sup01
-nvme5n1               259:4    0  800G  0 disk
-├─epicvg-epiclv       253:1    0   40G  0 lvm  /epic
-├─epicvg-epictmplv    253:2    0   10G  0 lvm  /epic/tmp
-└─epicvg-epicfileslv  253:3    0  300G  0 lvm  /epicfiles
-nvme4n1               259:7    0    1T  0 disk
-└─supvg-sup01lv       253:5    0  3.3T  0 lvm  /epic/sup01
-nvme7n1               259:8    0  300G  0 disk
-nvme6n1               259:9    0    1T  0 disk
-└─supvg-sup01lv       253:5    0  3.3T  0 lvm  /epic/sup01
-nvme8n1               259:10   0    1T  0 disk
-└─relvg-rel01lv       253:0    0  3.3T  0 lvm  /epic/rel01
-nvme9n1               259:11   0    1T  0 disk
-└─relvg-rel01lv       253:0    0  3.3T  0 lvm  /epic/rel01
-nvme10n1              259:12   0    1T  0 disk
-└─relvg-rel01lv       253:0    0  3.3T  0 lvm  /epic/rel01
-nvme11n1              259:13   0    1T  0 disk
-└─supvg-sup01lv       253:5    0  3.3T  0 lvm  /epic/sup01
-nvme12n1              259:14   0    1T  0 disk
-└─relvg-rel01lv       253:0    0  3.3T  0 lvm  /epic/rel01
-sh-4.4$ sudo nvme list
-Node                  SN                   Model                                    Namespace Usage                      Format           FW Rev
---------------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
-/dev/nvme0n1          vol02539d5d4f651a04c Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
-/dev/nvme1n1          vol0a68e5cadf023e98a Amazon Elastic Block Store               1         536.87  GB / 536.87  GB    512   B +  0 B   2.0
-/dev/nvme10n1         vol0dd3a8e1f3be2c5a1 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme11n1         vol01e754ced68296a8f Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme12n1         vol0493038d2fe2ba260 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme2n1          vol089fd859dd3b16926 Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
-/dev/nvme3n1          vol0c2e24dcbdee87cda Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme4n1          vol042b5b3f5dac7f4c2 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme5n1          vol05bd88386942bf561 Amazon Elastic Block Store               1         858.99  GB / 858.99  GB    512   B +  0 B   2.0
-/dev/nvme6n1          vol093a900cb69416e29 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme7n1          vol0637447d0da258b82 Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
-/dev/nvme8n1          vol002a3edd6e0aa984b Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme9n1          vol00b2d19b6df69a689 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-sh-4.4$ sudo pvs
-  PV            VG        Fmt  Attr PSize     PFree
-  /dev/nvme10n1 relvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme11n1 supvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme12n1 relvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme1n1  epicjrnvg lvm2 a--   <500.00g  <50.00g
-  /dev/nvme3n1  supvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme4n1  supvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme5n1  epicvg    lvm2 a--   <800.00g <450.00g
-  /dev/nvme6n1  supvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme7n1            lvm2 ---    300.00g  300.00g
-  /dev/nvme8n1  relvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme9n1  relvg     lvm2 a--  <1024.00g <186.50g
-sh-4.4$ sudo vgs
-  VG        #PV #LV #SN Attr   VSize    VFree
-  epicjrnvg   1   1   0 wz--n- <500.00g  <50.00g
-  epicvg      1   3   0 wz--n- <800.00g <450.00g
-  relvg       4   1   0 wz--n-   <4.00t  745.98g
-  supvg       4   1   0 wz--n-   <4.00t  745.98g
-sh-4.4$ sudo lvs
-  LV          VG        Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
-  epicjrnlv   epicjrnvg -wi-ao---- 450.00g
-  epicfileslv epicvg    -wi-ao---- 300.00g
-  epiclv      epicvg    -wi-ao----  40.00g
-  epictmplv   epicvg    -wi-ao----  10.00g
-  rel01lv     relvg     -wi-ao----   3.27t
-  sup01lv     supvg     -wi-ao----   3.27t
+Root filesystem
+
+vol02539d5d4f651a04c → /dev/nvme0n1p2 → mounted as / (no LVM).
+
+EPIC journal
+
+vol0a68e5cadf023e98a → /dev/nvme1n1 → VG epicjrnvg → LV epicjrnlv → /epic/jrn.
+
+EPIC main app / files
+
+vol05bd88386942bf561 → /dev/nvme5n1 → VG epicvg → LVs:
+
+epiclv → /epic
+
+epictmplv → /epic/tmp
+
+epicfileslv → /epicfiles.
+
+SUP data
+
+vol0c2e24dcbdee87cda, vol042b5b3f5dac7f4c2, vol093a900cb69416e29, vol01e754ced68296a8f
+→ /dev/nvme3n1, 4n1, 6n1, 11n1 → VG supvg → LV sup01lv → /epic/sup01.
+
+REL data
+
+vol002a3edd6e0aa984b, vol00b2d19b6df69a689, vol0dd3a8e1f3be2c5a1, vol0493038d2fe2ba260
+→ /dev/nvme8n1, 9n1, 10n1, 12n1 → VG relvg → LV rel01lv → /epic/rel01.
+
+Unutilized / spare
+
+vol089fd859dd3b16926 (/dev/nvme2n1) – not in LVM, no filesystem.
+
+vol0637447d0da258b82 (/dev/nvme7n1) – initialized as PV, but not added to any VG yet.
