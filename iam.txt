@@ -1,31 +1,6 @@
-resource "aws_route53_record" "clarityreport_a_record" {
-  for_each = local.final_cr_records
-
-  zone_id = data.aws_route53_zone.private.zone_id
-  name    = each.value.name
-  type    = "A"
-
-  # If alias == "Yes" → alias record → no ttl/records
-  # Otherwise         → normal A record → ttl + records
-  ttl = lower(try(each.value.alias, "")) == "yes" ? null : 300
-
-  records = lower(try(each.value.alias, "")) == "yes"
-    ? null
-    : [each.value.record]
-
-  dynamic "alias" {
-    for_each = lower(try(each.value.alias, "")) == "yes" ? [1] : []
-
-    content {
-      # Route traffic to → NLB/ALB
-      name                   = data.aws_lb.clarity.dns_name
-      zone_id                = data.aws_lb.clarity.zone_id
-      evaluate_target_health = true
-    }
-  }
-}
-
-
-data "aws_lb" "clarity" {
-  name = "eppprod-claritynlb-14a0914f676ff42b"
-}
+│ Error: Argument or block definition required
+│
+│   on main.tf line 53, in resource "aws_route53_record" "clarityreport_a_record":
+│   53:     ? null
+│
+│ An argument or block definition is required here.
