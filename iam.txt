@@ -1,5 +1,36 @@
-records = try(each.value.alias, null) =="Yes" ? null : [each.value.record]
+locals {
+  records = jsondecode(file("${path.module}/dns-data.json"))
+}
 
+resource "aws_route53_record" "a_records" {
+  for_each = {
+    for r in local.records : r.name => r
+  }
 
-records = try(each.value.alias, null) != null ? null : [each.value.record]
+  zone_id = var.zone_id
+  name    = each.value.name
+  type    = lookup(each.value, "type", "A")
 
+  # Flag: is this an alias record?
+  # (alias set to "Yes" (case-insensitive) in the JSON file)
+  # If alias == "Yes" → alias record; else → normal record.
+  ttl = lower(try(each.value.alias, "")) == "yes"
+    ? null
+    : lookup(each.value, "ttl", 300)
+
+  records = lower(try(each.value.alias, "")) == "yes"
+    ? null
+    : [each.value.record]
+
+  # Build alias block ONLY when alias == "Yes"
+  dynamic "alias" {
+    for_each = lower(try(each.value.alias, "")) == "yes" ? [1] : []
+
+    content {
+      # "Route traffic to" – use record value as alias target
+      name                   = each.value.record
+      zone_id                = var.lb_zone_id  # or data.aws_lb...zone_id
+      evaluate_target_health = true
+    }
+  }
+}
