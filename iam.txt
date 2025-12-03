@@ -1,1 +1,9 @@
-   { "name": "systempulse.epic-prod.aws.cignacloud.com", "record": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com", "alias": "Yes" },
+{
+  "name": "systempulse.epic-prod.aws.cignacloud.com",
+  "type": "A",
+  "alias": {
+    "name": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com.",
+    "zone_id": "<ELB_HOSTED_ZONE_ID>",
+    "evaluate_target_health": true
+  }
+}
