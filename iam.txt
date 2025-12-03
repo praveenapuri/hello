@@ -1,1 +1,5 @@
 records = try(each.value.alias, null) =="Yes" ? null : [each.value.record]
+
+
+records = try(each.value.alias, null) != null ? null : [each.value.record]
+
