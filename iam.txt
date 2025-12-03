@@ -1,9 +1,14 @@
-{
-  "name": "systempulse.epic-prod.aws.cignacloud.com",
-  "type": "A",
-  "alias": {
-    "name": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com.",
-    "zone_id": "<ELB_HOSTED_ZONE_ID>",
-    "evaluate_target_health": true
-  }
-}
+ Error: creating Route53 Record: operation error Route 53: ChangeResourceRecordSets, https response error StatusCode: 400, RequestID: db5eb248-cf34-4617-8830-bedbe8a9e30b, InvalidInput: Invalid request: Expected exactly one of [AliasTarget, all of [TTL, and ResourceRecords], or TrafficPolicyInstanceId], but found none in Change with [Action=CREATE, Name=systempulse.epic-prod.aws.cignacloud.com, Type=A, SetIdentifier=null]
+│
+│   with aws_route53_record.a_records["systempulse.epic-prod.aws.cignacloud.com"],
+│   on main.tf line 10, in resource "aws_route53_record" "a_records":
+│   10: resource "aws_route53_record" "a_records" {
+
+
+
+    { "name": "systempulse.epic-prod.aws.cignacloud.com", "record": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com",   "alias": {
+      "endpoint": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com.",
+      "region": "us-east-1",
+      "load_balancer": "internal-eppprod-alb-948202586",
+      "evaluate_target_health": true
+    } },
