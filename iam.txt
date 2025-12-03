@@ -1,1 +1,1 @@
-User: arn:aws:sts::650835064350:assumed-role/epp-chronicles-role-dev/i-03b815a947dd72035 is not authorized to perform: ec2:StartInstances
+   { "name": "systempulse.epic-prod.aws.cignacloud.com", "record": "dualstack.internal-eppprod-alb-948202586.us-east-1.elb.amazonaws.com", "alias": "Yes" },
