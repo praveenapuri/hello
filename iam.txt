@@ -52,3 +52,13 @@ resource "aws_route53_record" "a_records" {
     }
   }
 ]
+
+
+
+ Error: Invalid expression
+│
+│   on main.tf line 33, in resource "aws_route53_record" "a_records":
+│   33:   records = try(each.value.alias, null) == null ?
+│   34:     (
+│
+│ Expected the start of an expression, but found an invalid expression token.
