@@ -54,11 +54,37 @@ resource "aws_route53_record" "a_records" {
 ]
 
 
+locals {
+  records = jsondecode(file("${path.module}/data.json"))
+}
 
- Error: Invalid expression
-│
-│   on main.tf line 33, in resource "aws_route53_record" "a_records":
-│   33:   records = try(each.value.alias, null) == null ?
-│   34:     (
-│
-│ Expected the start of an expression, but found an invalid expression token.
+resource "aws_route53_record" "a_records" {
+  for_each = {
+    for r in local.records : r.name => r
+  }
+
+  zone_id = var.zone_id
+  name    = each.value.name
+  type    = lookup(each.value, "type", "A")
+
+  # ── Non-alias records: ttl + records ─────────────────────────────
+  # If alias is present, these must be null
+  ttl = try(each.value.alias, null) == null ? lookup(each.value, "ttl", 300) : null
+
+  records = try(each.value.alias, null) == null
+    ? lookup(each.value, "records", [])
+    : null
+
+  # ── Alias records: alias block ───────────────────────────────────
+  dynamic "alias" {
+    for_each = try(each.value.alias, null) == null ? [] : [each.value.alias]
+
+    content {
+      # "Route traffic to" → endpoint in JSON
+      name                   = alias.value.endpoint
+      zone_id                = alias.value.zone_id
+      evaluate_target_health = lookup(alias.value, "evaluate_target_health", false)
+    }
+  }
+}
+
