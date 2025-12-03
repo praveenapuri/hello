@@ -1,42 +1,19 @@
-locals {
-  records = jsondecode(file("${path.module}/dns-data.json"))
-}
+resource "aws_route53_record" "clarityreport_a_record" {
+  for_each = local.final_cr_records
 
-resource "aws_route53_record" "a_records" {
-  for_each = {
-    for r in local.records : r.name => r
-  }
-
-  # --- Safe alias flag: always becomes true/false ---
-  locals {
-    is_alias = (
-      # Case 1: alias is a string ("Yes")
-      can(lower(tostring(try(each.value.alias, "")))) &&
-      lower(tostring(try(each.value.alias, ""))) == "yes"
-    )
-    ||
-    (
-      # Case 2: alias is an object → treat as alias
-      try(type(each.value.alias), null) == object({})
-    )
-  }
-
-  zone_id = var.zone_id
+  zone_id = data.aws_route53_zone.private.zone_id
   name    = each.value.name
-  type    = lookup(each.value, "type", "A")
-
-  # -------- Normal records --------
-  ttl     = local.is_alias ? null : lookup(each.value, "ttl", 300)
-  records = local.is_alias ? null : [each.value.record]
-
-  # -------- Alias records --------
-  dynamic "alias" {
-    for_each = local.is_alias ? [1] : []
-
-    content {
-      name                   = each.value.record
-      zone_id                = var.lb_zone_id
-      evaluate_target_health = true
-    }
-  }
+  type    = "A"
+  records = [each.value.record]
 }
+
+  "dr_a_clarityreport_dns_entries": [
+    { "name": "eppclarityreport.epic-prod.aws.cignacloud.com", "record": "eppprod-claritynlb-14a0914f676ff42b.elb.us-east-2.amazonaws.com", "alias": "Yes" }
+  ],
+
+│ 
+Error: creating Route53 Record: operation error Route 53: ChangeResourceRecordSets, https response error StatusCode: 400, RequestID: 022819df-7d56-4e29-8432-c30712cd9bb9, InvalidInput: Invalid request: Expected exactly one of [AliasTarget, all of [TTL, and ResourceRecords], or TrafficPolicyInstanceId], but found none in Change with [Action=CREATE, Name=eppclarityreport.epic-prod.aws.cignacloud.com, Type=A, SetIdentifier=null]
+│
+│   with aws_route53_record.clarityreport_a_record["eppclarityreport.epic-prod.aws.cignacloud.com"],
+│   on main.tf line 36, in resource "aws_route53_record" "clarityreport_a_record":
+│   36: resource "aws_route53_record" "clarityreport_a_record" {
