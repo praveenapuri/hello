@@ -4,16 +4,28 @@ resource "aws_route53_record" "clarityreport_a_record" {
   zone_id = data.aws_route53_zone.private.zone_id
   name    = each.value.name
   type    = "A"
-  records = [each.value.record]
+
+  # If alias == "Yes" → alias record → no ttl/records
+  # Otherwise         → normal A record → ttl + records
+  ttl = lower(try(each.value.alias, "")) == "yes" ? null : 300
+
+  records = lower(try(each.value.alias, "")) == "yes"
+    ? null
+    : [each.value.record]
+
+  dynamic "alias" {
+    for_each = lower(try(each.value.alias, "")) == "yes" ? [1] : []
+
+    content {
+      # Route traffic to → NLB/ALB
+      name                   = data.aws_lb.clarity.dns_name
+      zone_id                = data.aws_lb.clarity.zone_id
+      evaluate_target_health = true
+    }
+  }
 }
 
-  "dr_a_clarityreport_dns_entries": [
-    { "name": "eppclarityreport.epic-prod.aws.cignacloud.com", "record": "eppprod-claritynlb-14a0914f676ff42b.elb.us-east-2.amazonaws.com", "alias": "Yes" }
-  ],
 
-│ 
-Error: creating Route53 Record: operation error Route 53: ChangeResourceRecordSets, https response error StatusCode: 400, RequestID: 022819df-7d56-4e29-8432-c30712cd9bb9, InvalidInput: Invalid request: Expected exactly one of [AliasTarget, all of [TTL, and ResourceRecords], or TrafficPolicyInstanceId], but found none in Change with [Action=CREATE, Name=eppclarityreport.epic-prod.aws.cignacloud.com, Type=A, SetIdentifier=null]
-│
-│   with aws_route53_record.clarityreport_a_record["eppclarityreport.epic-prod.aws.cignacloud.com"],
-│   on main.tf line 36, in resource "aws_route53_record" "clarityreport_a_record":
-│   36: resource "aws_route53_record" "clarityreport_a_record" {
+data "aws_lb" "clarity" {
+  name = "eppprod-claritynlb-14a0914f676ff42b"
+}
