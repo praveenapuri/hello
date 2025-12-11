@@ -1,4 +1,5 @@
 aws ec2 describe-volumes \
+  --region us-east-2 \
   --filters Name=status,Values=available \
-  --query "Volumes[*].[VolumeId,Size,VolumeType,CreateTime,Tags]" \
+  --query 'Volumes[].{Name:Tags[?Key==`Name`]|[0].Value,VolumeId:VolumeId,Size:Size,Type:VolumeType}' \
   --output table
