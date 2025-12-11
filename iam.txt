@@ -1,33 +1,4 @@
-resource "aws_route53_record" "clarityreport_a_record" {
-  for_each = local.final_cr_records
-
-  zone_id = data.aws_route53_zone.private.zone_id
-  name    = each.value.name
-  type    = "A"
-
-  # if alias == "Yes" → ALIAS record (no ttl/records)
-  # else              → normal A record with ttl + records
-  ttl = lower(lookup(each.value, "alias", "")) == "yes" ? null : 300
-
-  records = lower(lookup(each.value, "alias", "")) == "yes"
-    ? null
-    : [each.value.record]
-
-  # ALIAS block only when alias == "Yes"
-  # (pointing to your NLB/ALB)
-  dynamic "alias" {
-    for_each = lower(lookup(each.value, "alias", "")) == "yes" ? [1] : []
-
-    content {
-      # "Route traffic to" – use the DNS name of the LB
-      # You can hardcode this or use a data source:
-      #   data "aws_lb" "clarity" { name = "eppprod-claritynlb-14a0914f676ff42b" }
-      #   name    = data.aws_lb.clarity.dns_name
-      #   zone_id = data.aws_lb.clarity.zone_id
-
-      name                   = each.value.record  # eppprod-claritynlb-...elb.us-east-2.amazonaws.com
-      zone_id                = var.clarity_nlb_zone_id
-      evaluate_target_health = true
-    }
-  }
-}
+aws ec2 describe-volumes \
+  --filters Name=status,Values=available \
+  --query "Volumes[*].[VolumeId,Size,VolumeType,CreateTime,Tags]" \
+  --output table
