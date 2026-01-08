@@ -6,3 +6,69 @@ aws ec2 describe-instances \
     State: State.Name
   }" \
   --output table
+
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+REGION="${1:-us-east-1}"
+START="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PERIOD=86400   # 1 day
+
+echo "InstanceId,Name,Date,CPU_Avg"
+
+aws ec2 describe-instances --region "$REGION" \
+  --query "Reservations[].Instances[?State.Name!='terminated'].[InstanceId, Tags[?Key=='Name']|[0].Value]" \
+  --output text |
+while read -r IID NAME; do
+  aws cloudwatch get-metric-statistics --region "$REGION" \
+    --namespace AWS/EC2 \
+    --metric-name CPUUtilization \
+    --dimensions Name=InstanceId,Value="$IID" \
+    --start-time "$START" --end-time "$END" \
+    --period "$PERIOD" \
+    --statistics Average \
+    --query "Datapoints[].{T:Timestamp,V:Average}" \
+    --output text |
+  awk -v iid="$IID" -v name="$NAME" 'BEGIN{OFS=","} {print iid,name,$1,$2}'
+done
+
+chmod +x ec2_cpu_30d.sh
+./ec2_cpu_30d.sh us-east-1 > cpu_30d.csv
+
+
+--------
+
+#!/usr/bin/env bash
+set -euo pipefail
+
+REGION="${1:-us-east-1}"
+START="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+PERIOD=86400
+
+echo "InstanceId,Name,Date,MemUsedPercent_Avg"
+
+aws ec2 describe-instances --region "$REGION" \
+  --query "Reservations[].Instances[?State.Name!='terminated'].[InstanceId, Tags[?Key=='Name']|[0].Value]" \
+  --output text |
+while read -r IID NAME; do
+  aws cloudwatch get-metric-statistics --region "$REGION" \
+    --namespace CWAgent \
+    --metric-name mem_used_percent \
+    --dimensions Name=InstanceId,Value="$IID" \
+    --start-time "$START" --end-time "$END" \
+    --period "$PERIOD" \
+    --statistics Average \
+    --query "Datapoints[].{T:Timestamp,V:Average}" \
+    --output text |
+  awk -v iid="$IID" -v name="$NAME" 'BEGIN{OFS=","} {print iid,name,$1,$2}'
+done
+
+
+chmod +x ec2_mem_30d.sh
+./ec2_mem_30d.sh us-east-1 > mem_30d.csv
+
+
+
