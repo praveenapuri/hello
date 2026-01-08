@@ -1,5 +1,8 @@
-aws ec2 describe-volumes \
-  --region us-east-2 \
-  --filters Name=status,Values=available \
-  --query 'Volumes[].{Name:Tags[?Key==`Name`]|[0].Value,VolumeId:VolumeId,Size:Size,Type:VolumeType}' \
+aws ec2 describe-instances \
+  --query "Reservations[].Instances[].{
+    InstanceId: InstanceId,
+    InstanceType: InstanceType,
+    Name: Tags[?Key=='Name'] | [0].Value,
+    State: State.Name
+  }" \
   --output table
