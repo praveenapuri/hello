@@ -1,3 +1,4 @@
-for /f %%i in ('aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text') do (
-  aws ec2 create-tags --resources %%i --tags Key=Environment,Value=Production
-)
+# This fetches all instance IDs and passes them to the create-tags command
+aws ec2 create-tags \
+    --resources $(aws ec2 describe-instances --query 'Reservations[*].Instances[*].InstanceId' --output text) \
+    --tags Key=Environment,Value=Production
