@@ -1,8 +1,3 @@
-aws ec2 describe-instances \
-  --query 'Reservations[].Instances[].InstanceId' \
-  --output text | tr '\t' '\n' | while read instance; do
-    echo "Tagging $instance"
-    aws ec2 create-tags \
-      --resources "$instance" \
-      --tags Key=Environment,Value=Production
-done
+PS C:\Users\C8P8JH> aws ec2 create-tags --resources $(aws ec2 describe-instances --query 'Reservations[].Instances[].InstanceId' --output text) --tags Key=AssetOwner,Value=jake.birke@evernorth.com
+
+An error occurred (InvalidID) when calling the CreateTags operation: The ID 'i-033409e593d107df1        i-0c81c104870d682b1     i-07c2836629f3788ee     i-07780d0290c6d550d     i-027eb677c04098865     i-0a04c088515e2ac27     i-030db3861acd5e3e3     i-010acc92314db6757     i-06989361d4029f1fb     i-09186b1ef3b025806     i-00d033aefd3201e3c     i-0074c612b207e0be4     i-08c901c9e01f6aad9     i-0692239b77752cfde     i-0b8956012da90d2ad     i-0222b81b771f5fef3     i-0bc62f0e9f4c36b80     i-020a9c7f8e2c7c971     i-0b9a944b55c18e86b     i-09783a023622aa8a8     i-08719eedce52c906e     i-062b5937cce1f8862     i-0dbde9a6e216dd2a5     i-081970520ad61d03f     i-01f6c24fc6f0407fa     i-00ce03adf81afb10d     i-05535ff56f004d012     i-0a6b8331f0d8dd269     i-080676597a91efd0d' is not valid
