@@ -1,3 +1,8 @@
 aws ec2 create-tags ^
   --resources $(aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text) ^
   --tags Key=Environment,Value=Production
+
+$ids = aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text
+aws ec2 create-tags --resources $ids --tags Key=Environment,Value=Production
+
+
