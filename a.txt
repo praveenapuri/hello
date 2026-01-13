@@ -1,4 +1,5 @@
-# This fetches all instance IDs and passes them to the create-tags command
-aws ec2 create-tags \
-    --resources $(aws ec2 describe-instances --query 'Reservations[*].Instances[*].InstanceId' --output text) \
-    --tags Key=Environment,Value=Production
+# Get all Instance IDs and store them in a variable
+$instanceIds = aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text
+
+# Update/Create the tag for those instances
+aws ec2 create-tags --resources $instanceIds --tags Key=YourKey,Value=YourValue
