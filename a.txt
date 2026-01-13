@@ -6,3 +6,5 @@ aws ec2 describe-instances `
       --resources $_ `
       --tags Key=AssetOwner,Value=jake.birke@evernorth.com
   }
+
+aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text | % { aws ec2 create-tags --resources $_ --tags Key=AssetOwner,Value=jake.birke@evernorth.com }
