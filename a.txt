@@ -1,5 +1,10 @@
-# Get all Instance IDs and store them in a variable
+# Get the IDs
 $instanceIds = aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text
 
-# Update/Create the tag for those instances
-aws ec2 create-tags --resources $instanceIds --tags Key=YourKey,Value=YourValue
+# Loop through each ID and apply the tag
+foreach ($id in $instanceIds -split "\s+") {
+    if ($id) {
+        Write-Host "Tagging instance: $id"
+        aws ec2 create-tags --resources $id --tags Key=Department,Value=Engineering
+    }
+}
