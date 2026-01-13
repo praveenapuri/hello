@@ -1,3 +1,8 @@
-aws ec2 create-tags \
-  --resources $(aws ec2 describe-instances --query 'Reservations[].Instances[].InstanceId' --output text) \
-  --tags Key=Environment,Value=Production
+aws ec2 describe-instances \
+  --query 'Reservations[].Instances[].InstanceId' \
+  --output text | tr '\t' '\n' | while read instance; do
+    echo "Tagging $instance"
+    aws ec2 create-tags \
+      --resources "$instance" \
+      --tags Key=Environment,Value=Production
+done
