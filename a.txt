@@ -1,66 +1,39 @@
-# 1. Configuration & Clock Fix
 [Amazon.AWSConfigs]::CorrectForClockSkew = $true
-$Region = "us-east-1" # Change to your region
-Set-DefaultAWSRegion -Region $Region
+Set-DefaultAWSRegion -Region "us-east-1"
 
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
-$Period = 21600 # 6-hour chunks for 90-day stability
+$Period = 21600 
 
-# 2. Fetch Instances
-$reservations = Get-EC2Instance
-$report = foreach ($res in $reservations) {
-    foreach ($ins in $res.Instances) {
-        $instanceId = $ins.InstanceId
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed-Instance"
+$instances = (Get-EC2Instance).Instances
+$report = foreach ($ins in $instances) {
+    $instanceId = $ins.InstanceId
+    $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
+    # Get the private DNS name which usually matches the 'host' dimension in CW
+    $hostName = $ins.PrivateDnsName.Split('.')[0] 
 
-        # --- Instance Level: CPU (Standard AWS Metric) ---
-        $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
-            -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
-        
-        # --- Instance Level: Memory (Windows Metric you found) ---
-        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
-            -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    # --- Memory ---
+    $memStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
+        -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
+        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    $memVal = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
 
-        $cpuVal = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "N/A" }
-        $memVal = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
+    # --- Disk (Searching by Hostname instead of ID) ---
+    $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
+        -Dimension @{Name="host"; Value=$hostName} -StartTime $startTime -EndTime $endTime `
+        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
+    
+    $diskVal = if ($diskStats) { 
+        $used = 100 - $diskStats.Average
+        "{0:N2}%" -f $used 
+    } else { "No ID Link" }
 
-        # --- Volume Level Details ---
-        foreach ($blk in $ins.BlockDeviceMappings) {
-            $volId = $blk.Ebs.VolumeId
-            $vol = Get-EC2Volume -VolumeId $volId
-            $volName = ($vol.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed-Volume"
-
-            # --- Disk Utilization: Checking "LogicalDisk % Free Space" ---
-            # Since Windows reports Free Space, we subtract from 100 to get "Used %"
-            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
-                -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="instance"; Value="C:"} `
-                -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-            
-            $diskVal = if ($diskStats) { 
-                $used = 100 - $diskStats.Average
-                "{0:N2}%" -f $used 
-            } else { "No Agent" }
-
-            [PSCustomObject]@{
-                EC2_Name    = $instanceName
-                EC2_ID      = $instanceId
-                Vol_Name    = $volName
-                Vol_ID      = $volId
-                Size_GB     = $vol.Size
-                Type        = $vol.VolumeType
-                State       = $vol.State
-                IsRoot      = ($ins.RootDeviceName -eq $blk.DeviceName)
-                CPU_Avg_90d = $cpuVal
-                Mem_Avg_90d = $memVal
-                Disk_Used_Pct = $diskVal
-            }
-        }
+    [PSCustomObject]@{
+        EC2_Name      = $instanceName
+        EC2_ID        = $instanceId
+        Avg_Mem_90d   = $memVal
+        Disk_Used_Pct = $diskVal
     }
 }
 
-# 3. Final Output
 $report | Format-Table -AutoSize
