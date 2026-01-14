@@ -1,40 +1,7 @@
-# 1. Setup
-Set-DefaultAWSRegion -Region us-east-1  # Change to your region
-$endTime = Get-Date
-$startTime = $endTime.AddMinutes(-30)
+# This will list every metric name currently in your CloudWatch "CWAgent" namespace
+Get-CWMetricList -Namespace "CWAgent" | Select-Object MetricName -Unique
 
-# 2. Get Instances
-$reservations = Get-EC2Instance
-$report = foreach ($res in $reservations) {
-    foreach ($ins in $res.Instances) {
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value
-        
-        foreach ($blk in $ins.BlockDeviceMappings) {
-            $volId = $blk.Ebs.VolumeId
-            $vol = Get-EC2Volume -VolumeId $volId
-            
-            # 3. Attempt to get Utilization from CloudWatch
-            # Note: The metric name depends on how you configured your agent.
-            # Default for many Windows setups is "% Free Space" under LogicalDisk
-            $stats = Get-CWMetricStatistic -Namespace "CWAgent" `
-                -MetricName "disk_used_percent" `
-                -Dimension @{Name="InstanceId"; Value=$ins.InstanceId} `
-                -StartTime $startTime -EndTime $endTime -Period 300 -Statistics Average | 
-                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-
-            $util = if ($stats) { "{0:N2}%" -f $stats.Average } else { "No Agent Data" }
-
-            [PSCustomObject]@{
-                InstanceName = $instanceName
-                InstanceId   = $ins.InstanceId
-                VolumeId     = $volId
-                Size_GB      = $vol.Size
-                Type         = $vol.VolumeType
-                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
-                Utilization  = $util
-            }
-        }
-    }
-}
-
-$report | Format-Table -AutoSize
+$testId = "i-xxxxxxx" # Put one of your Instance IDs here
+Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
+    -Dimension @{Name="InstanceId"; Value=$testId} `
+    -StartTime (Get-Date).AddHours(-1) -EndTime (Get-Date) -Period 3600 -Statistics Average
