@@ -1,56 +1,60 @@
-# 1. Setup (90 Days)
-$Region = "us-east-1" 
+# 1. Configuration & Clock Fix
+[Amazon.AWSConfigs]::CorrectForClockSkew = $true
+$Region = "us-east-1" # Change to your region
 Set-DefaultAWSRegion -Region $Region
 
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
+$Period = 21600 # 6-hour chunks for 90-day API stability
 
-# 6-hour period (21600 seconds) ensures we stay under the 1440 limit for 90 days
-# (90 days / 6 hours = 360 datapoints, which is safe)
-$Period = 21600 
-
+# 2. Fetch Instances
 $reservations = Get-EC2Instance
 $report = foreach ($res in $reservations) {
     foreach ($ins in $res.Instances) {
         $instanceId = $ins.InstanceId
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
+        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed-Instance"
 
-        # --- Avg CPU Utilization ---
-        $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" `
-            -MetricName "CPUUtilization" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} `
-            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-            Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+        # --- Performance Metrics (Instance Level) ---
+        $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
+            -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
+            -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
         
-        $cpuAvg = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "No Data" }
+        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
+            -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
+            -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
 
-        # --- Avg Memory Utilization (Windows Specific) ---
-        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
-            -MetricName "Memory % Committed Bytes In Use" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} `
-            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-            Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+        $cpuVal = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "N/A" }
+        $memVal = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
 
-        $memAvg = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
-
-        # --- Get Volume and Disk Details ---
+        # --- Volume Details (Volume Level) ---
         foreach ($blk in $ins.BlockDeviceMappings) {
             $volId = $blk.Ebs.VolumeId
             $vol = Get-EC2Volume -VolumeId $volId
-            
+            $volName = ($vol.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed-Volume"
+
+            # Disk Utilization (requires CloudWatch Agent)
+            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "disk_used_percent" `
+                -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="device"; Value=$blk.DeviceName} `
+                -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
+                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
+            $diskVal = if ($diskStats) { "{0:N2}%" -f $diskStats.Average } else { "No Agent" }
+
             [PSCustomObject]@{
-                InstanceName = $instanceName
-                InstanceID   = $instanceId
-                Vol_ID       = $volId
-                Vol_Type     = $vol.VolumeType
-                Size_GB      = $vol.Size
-                Avg_CPU_90d  = $cpuAvg
-                Avg_Mem_90d  = $memAvg
-                State        = $vol.State
-                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
+                EC2_Name    = $instanceName
+                EC2_ID      = $instanceId
+                Vol_Name    = $volName
+                Vol_ID      = $volId
+                Size_GB     = $vol.Size
+                Type        = $vol.VolumeType
+                State       = $vol.State
+                IsRoot      = ($ins.RootDeviceName -eq $blk.DeviceName)
+                CPU_Avg_90d = $cpuVal
+                Mem_Avg_90d = $memVal
+                Disk_Util   = $diskVal
             }
         }
     }
 }
 
+# 3. Final Output
 $report | Format-Table -AutoSize
