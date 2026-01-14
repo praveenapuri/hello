@@ -17,3 +17,10 @@ $testId = "i-xxxxxxx" # Put one of your Instance IDs here
 Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
     -Dimension @{Name="InstanceId"; Value=$testId} `
     -StartTime (Get-Date).AddHours(-1) -EndTime (Get-Date) -Period 3600 -Statistics Average
+
+
+
+$testId = "i-xxxxxxx" # <--- Put one of your Instance IDs here
+Get-CWMetricList -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" | 
+    Where-Object { $_.Dimensions.Value -eq $testId } | 
+    Select-Object -ExpandProperty Dimensions
