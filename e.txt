@@ -1,50 +1,45 @@
-# 1. Configuration
-$Region = "us-east-1"  # <--- Change to your region
-Set-DefaultAWSRegion -Region $Region
+# 1. Force Clock Sync and Module check
+[Amazon.AWSConfigs]::CorrectForClockSkew = $true
+Set-DefaultAWSRegion -Region "us-east-1"
 
+try {
+    $instances = (Get-EC2Instance -ErrorAction Stop).Instances
+    Write-Host "Authentication Successful. Processing $($instances.Count) instances..." -ForegroundColor Green
+}
+catch {
+    Write-Error "Authentication Failed: $($_.Exception.Message)"
+    Write-Host "Try running 'aws sso login' or checking your credentials." -ForegroundColor Yellow
+    return
+}
+
+# 2. Timeframe Setup
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
+$Period = 21600 # 6-hour chunks for 90-day stability
 
-# 7200 seconds (2 hours) ensures we get ~1080 datapoints for 90 days, staying under the 1440 limit.
-$Period = 7200 
+$report = foreach ($ins in $instances) {
+    $id = $ins.InstanceId
+    $name = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-# 2. Fetch Instances
-$reservations = Get-EC2Instance
-$instanceList = $reservations.Instances
-
-$report = foreach ($ins in $instanceList) {
-    $instanceId = $ins.InstanceId
-    $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
-
-    # --- Avg CPU Utilization (90 Days) ---
-    $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" `
-        -MetricName "CPUUtilization" `
-        -Dimension @{Name="InstanceId"; Value=$instanceId} `
-        -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-        Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    # CPU Statistics
+    $cpu = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
+        -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime `
+        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | 
+        Measure-Object -Property Average -Average
     
-    $cpuAvg = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "No Data" }
-
-    # --- Avg Memory Utilization (90 Days) ---
-    # Windows default metric name: "Memory % Committed Bytes In Use"
-    $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
-        -MetricName "Memory % Committed Bytes In Use" `
-        -Dimension @{Name="InstanceId"; Value=$instanceId} `
-        -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-        Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
-
-    $memAvg = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
+    # Memory Statistics (Windows Agent)
+    $mem = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
+        -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime `
+        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | 
+        Measure-Object -Property Average -Average
 
     [PSCustomObject]@{
-        EC2_Name      = $instanceName
-        EC2_ID        = $instanceId
-        Avg_CPU_90d   = $cpuAvg
-        Avg_Mem_90d   = $memAvg
+        EC2_Name      = $name
+        EC2_ID        = $id
+        Avg_CPU_90d   = if ($cpu.Count -gt 0) { "{0:N2}%" -f $cpu.Average } else { "N/A" }
+        Avg_Mem_90d   = if ($mem.Count -gt 0) { "{0:N2}%" -f $mem.Average } else { "No Agent" }
     }
 }
 
-# 3. Output Results
-Write-Host "`n--- EC2 Usage Report (Last 90 Days) ---" -ForegroundColor Cyan
 $report | Format-Table -AutoSize
-
-Write-Host "Total Number of EC2 Instances: $($instanceList.Count)" -ForegroundColor Yellow
+Write-Host "Total Instances: $($instances.Count)" -ForegroundColor Cyan
