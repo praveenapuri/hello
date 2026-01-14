@@ -5,7 +5,7 @@ Set-DefaultAWSRegion -Region $Region
 
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
-$Period = 21600 # 6-hour chunks for 90-day API stability
+$Period = 21600 # 6-hour chunks for 90-day stability
 
 # 2. Fetch Instances
 $reservations = Get-EC2Instance
@@ -14,11 +14,12 @@ $report = foreach ($res in $reservations) {
         $instanceId = $ins.InstanceId
         $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed-Instance"
 
-        # --- Performance Metrics (Instance Level) ---
+        # --- Instance Level: CPU (Standard AWS Metric) ---
         $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
             -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
             -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
         
+        # --- Instance Level: Memory (Windows Metric you found) ---
         $memStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
             -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
             -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
@@ -26,18 +27,23 @@ $report = foreach ($res in $reservations) {
         $cpuVal = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "N/A" }
         $memVal = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
 
-        # --- Volume Details (Volume Level) ---
+        # --- Volume Level Details ---
         foreach ($blk in $ins.BlockDeviceMappings) {
             $volId = $blk.Ebs.VolumeId
             $vol = Get-EC2Volume -VolumeId $volId
             $volName = ($vol.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed-Volume"
 
-            # Disk Utilization (requires CloudWatch Agent)
-            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "disk_used_percent" `
-                -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="device"; Value=$blk.DeviceName} `
+            # --- Disk Utilization: Checking "LogicalDisk % Free Space" ---
+            # Since Windows reports Free Space, we subtract from 100 to get "Used %"
+            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
+                -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="instance"; Value="C:"} `
                 -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
                 Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-            $diskVal = if ($diskStats) { "{0:N2}%" -f $diskStats.Average } else { "No Agent" }
+            
+            $diskVal = if ($diskStats) { 
+                $used = 100 - $diskStats.Average
+                "{0:N2}%" -f $used 
+            } else { "No Agent" }
 
             [PSCustomObject]@{
                 EC2_Name    = $instanceName
@@ -50,7 +56,7 @@ $report = foreach ($res in $reservations) {
                 IsRoot      = ($ins.RootDeviceName -eq $blk.DeviceName)
                 CPU_Avg_90d = $cpuVal
                 Mem_Avg_90d = $memVal
-                Disk_Util   = $diskVal
+                Disk_Used_Pct = $diskVal
             }
         }
     }
