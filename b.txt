@@ -1,6 +1,18 @@
 # This will list every metric name currently in your CloudWatch "CWAgent" namespace
 Get-CWMetricList -Namespace "CWAgent" | Select-Object MetricName -Unique
 
+
+disk_inodes_free
+disk_used_percent
+diskio_io_time
+LogicalDisk % Free Space
+Memory Available MBytes
+LogicalDisk Free Megabytes
+mem_used_percent
+Memory % Committed Bytes In Use
+swap_used_percent
+
+
 $testId = "i-xxxxxxx" # Put one of your Instance IDs here
 Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
     -Dimension @{Name="InstanceId"; Value=$testId} `
