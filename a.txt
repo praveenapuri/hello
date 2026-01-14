@@ -32,3 +32,6 @@ $report = foreach ($reservation in $instances) {
 
 # Display in a nice table
 $report | Format-Table -AutoSize
+
+$report | Export-Csv -Path "AWS_Volume_Inventory.csv" -NoTypeInformation
+
