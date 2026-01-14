@@ -1,34 +1,45 @@
-# 1. Force the correct Region (CHANGE THIS to your region)
-$MyRegion = "us-east-1" 
-Set-DefaultAWSRegion -Region $MyRegion
+# 1. Setup Timeframe (90 Days)
+$Region = "us-east-1" # Change to your region
+Set-DefaultAWSRegion -Region $Region
 
-# 2. Get the instances
+$endTime = Get-Date
+$startTime = $endTime.AddDays(-90)
+
+# CloudWatch requires a Period of 3600 (1 hour) for data older than 63 days
+$Period = 3600 
+
 $reservations = Get-EC2Instance
-if ($null -eq $reservations -or $reservations.Count -eq 0) {
-    Write-Error "No instances found in $MyRegion. Check your Region or AWS Credentials."
-    return
-}
-
-# 3. Build the report
 $report = foreach ($res in $reservations) {
     foreach ($ins in $res.Instances) {
-        $name = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value
+        $instanceId = $ins.InstanceId
+        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
+
+        # --- Average CPU Utilization (90 Days) ---
+        $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" `
+            -MetricName "CPUUtilization" `
+            -Dimension @{Name="InstanceId"; Value=$instanceId} `
+            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
+            Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
         
-        foreach ($blk in $ins.BlockDeviceMappings) {
-            $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
-            
-            [PSCustomObject]@{
-                InstanceName = $name
-                InstanceId   = $ins.InstanceId
-                VolumeId     = $vol.VolumeId
-                Size_GB      = $vol.Size
-                Type         = $vol.VolumeType
-                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
-                State        = $vol.State
-            }
+        $cpuAvg = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "No Data" }
+
+        # --- Average Memory Utilization (90 Days) ---
+        # Note: Windows Agent default is usually "Memory % Committed Bytes In Use"
+        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
+            -MetricName "Memory % Committed Bytes In Use" `
+            -Dimension @{Name="InstanceId"; Value=$instanceId} `
+            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
+            Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+
+        $memAvg = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
+
+        [PSCustomObject]@{
+            InstanceName = $instanceName
+            InstanceID   = $instanceId
+            Avg_CPU_90d  = $cpuAvg
+            Avg_Mem_90d  = $memAvg
         }
     }
 }
 
-# 4. Display the result
 $report | Format-Table -AutoSize
