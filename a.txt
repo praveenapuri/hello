@@ -1,37 +1,34 @@
-# Get all running and stopped instances
-$instances = Get-EC2Instance
+# 1. Force the correct Region (CHANGE THIS to your region)
+$MyRegion = "us-east-1" 
+Set-DefaultAWSRegion -Region $MyRegion
 
-$report = foreach ($reservation in $instances) {
-    foreach ($instance in $reservation.Instances) {
-        $instanceId = $instance.InstanceId
-        $instanceName = ($instance.Tags | Where-Object { $_.Key -eq "Name" }).Value
-        $rootDeviceName = $instance.RootDeviceName
+# 2. Get the instances
+$reservations = Get-EC2Instance
+if ($null -eq $reservations -or $reservations.Count -eq 0) {
+    Write-Error "No instances found in $MyRegion. Check your Region or AWS Credentials."
+    return
+}
 
-        foreach ($mapping in $instance.BlockDeviceMappings) {
-            $volId = $mapping.Ebs.VolumeId
-            $devName = $mapping.DeviceName
+# 3. Build the report
+$report = foreach ($res in $reservations) {
+    foreach ($ins in $res.Instances) {
+        $name = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value
+        
+        foreach ($blk in $ins.BlockDeviceMappings) {
+            $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
             
-            # Fetch specific volume details (Type, Size)
-            $volDetail = Get-EC2Volume -VolumeId $volId
-            $volNameTag = ($volDetail.Tags | Where-Object { $_.Key -eq "Name" }).Value
-
             [PSCustomObject]@{
-                InstanceName = $instanceName
-                InstanceId   = $instanceId
-                VolumeId     = $volId
-                NameTag      = $volNameTag
-                Device       = $devName
-                Type         = $volDetail.VolumeType
-                Size_GiB     = $volDetail.Size
-                IsRoot       = ($devName -eq $rootDeviceName)
-                Utilization  = "Requires CloudWatch Agent"
+                InstanceName = $name
+                InstanceId   = $ins.InstanceId
+                VolumeId     = $vol.VolumeId
+                Size_GB      = $vol.Size
+                Type         = $vol.VolumeType
+                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
+                State        = $vol.State
             }
         }
     }
 }
 
-# Display in a nice table
+# 4. Display the result
 $report | Format-Table -AutoSize
-
-$report | Export-Csv -Path "AWS_Volume_Inventory.csv" -NoTypeInformation
-
