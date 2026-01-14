@@ -1,10 +1,1 @@
-# Get the IDs
-$instanceIds = aws ec2 describe-instances --query "Reservations[].Instances[].InstanceId" --output text
-
-# Loop through each ID and apply the tag
-foreach ($id in $instanceIds -split "\s+") {
-    if ($id) {
-        Write-Host "Tagging instance: $id"
-        aws ec2 create-tags --resources $id --tags Key=Department,Value=Engineering
-    }
-}
+aws ec2 describe-instances --query "Reservations[].Instances[].{InstanceId:InstanceId, Volumes:BlockDeviceMappings[].Ebs.VolumeId}" --output json
