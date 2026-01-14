@@ -1,74 +1,50 @@
-EBS Volume ID
-NVMe Device
-LVM VG
-LVM LV(s) (device)
-Mounted On
-Notes
-vol0169d82b5f4376cca
-/dev/nvme0n1 → nvme0n1p2
-none
-none (direct partition)
-/
-Root disk, not using LVM.  
-vol01c91a8fe65e305af
-/dev/nvme1n1
-prdvg
-prd01lv → /dev/prdvg/prd01lv
-/epic/prd01
-Part of a 4-disk VG; LV spans nvme1n1,2n1,5n1,6n1.  
-vol0b373880acf425ac5
-/dev/nvme2n1
-prdvg
-prd01lv → /dev/prdvg/prd01lv
-/epic/prd01
-Same LV as above (striped/linear across 4 PVs).  
-vol05e8d4ab880e1d167
-/dev/nvme5n1
-prdvg
-prd01lv → /dev/prdvg/prd01lv
-/epic/prd01
-Same LV as above.  
-vol0fe9676b93ff51819
-/dev/nvme6n1
-prdvg
-prd01lv → /dev/prdvg/prd01lv
-/epic/prd01
-Same LV as above.  
-vol07909a71211218f78
-/dev/nvme3n1
-prdjrnvg
-epicjrnlv → /dev/prdjrnvg/epicjrnlvepicfileslv → /dev/prdjrnvg/epicfileslv
-/epic/jrn/epicfiles
-Single EBS volume backing both journal and files LVs.  
-vol0b2032b4691bc236c
-/dev/nvme4n1
-prdinstvg
-epiclv → /dev/prdinstvg/epiclvepictmplv → /dev/prdinstvg/epictmplvepicprdlv → /dev/prdinstvg/epicprdlv
-/epic/epic/tmp/epic/prd
-Single EBS volume backing all “inst” LVs.  
+# 1. Setup
+Set-DefaultAWSRegion -Region us-east-1  # Change to your region
+$endTime = Get-Date
+$startTime = $endTime.AddMinutes(-30)
 
+$reservations = Get-EC2Instance
+$report = foreach ($res in $reservations) {
+    foreach ($ins in $res.Instances) {
+        $instanceId = $ins.InstanceId
+        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value
 
+        # --- Get Memory Utilization ---
+        # Note: We check common metric names for Linux (mem_used_percent) and Windows (% Committed Bytes In Use)
+        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
+            -MetricName "mem_used_percent" `
+            -Dimension @{Name="InstanceId"; Value=$instanceId} `
+            -StartTime $startTime -EndTime $endTime -Period 300 -Statistics Average | 
+            Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
 
-⸻
+        $memUtil = if ($memStats) { "{0:N2}%" -f $memStats.Average } else { "No Agent Data" }
 
-🔎 Quick verbal summary
-	•	Root disk
-	•	vol0169d82b5f4376cca → /dev/nvme0n1p2 → mounted directly as / (no LVM).
-	•	EPIC main data (/epic/prd01)
-	•	vol01c91a8fe65e305af, vol0b373880acf425ac5, vol05e8d4ab880e1d167, vol0fe9676b93ff51819
-→ /dev/nvme1n1, /dev/nvme2n1, /dev/nvme5n1, /dev/nvme6n1
-→ VG prdvg → LV prd01lv → mounted on /epic/prd01.  ￼
-	•	EPIC journal + files
-	•	vol07909a71211218f78 → /dev/nvme3n1 → VG prdjrnvg → LVs:
-	•	epicjrnlv → /epic/jrn
-	•	epicfileslv → /epicfiles  ￼
-	•	EPIC instance / binaries / temp / prd
-	•	vol0b2032b4691bc236c → /dev/nvme4n1 → VG prdinstvg → LVs:
-	•	epiclv → /epic
-	•	epictmplv → /epic/tmp
-	•	epicprdlv → /epic/prd  ￼
+        # --- Get Volume Details ---
+        foreach ($blk in $ins.BlockDeviceMappings) {
+            $volId = $blk.Ebs.VolumeId
+            $vol = Get-EC2Volume -VolumeId $volId
+            
+            # Get Disk Utilization
+            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" `
+                -MetricName "disk_used_percent" `
+                -Dimension @{Name="InstanceId"; Value=$instanceId} `
+                -StartTime $startTime -EndTime $endTime -Period 300 -Statistics Average | 
+                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
 
-⸻
+            $diskUtil = if ($diskStats) { "{0:N2}%" -f $diskStats.Average } else { "No Agent Data" }
 
-If you’d like, I can also generate the LVM create/extend commands that would recreate exactly this layout on another server.
+            [PSCustomObject]@{
+                InstanceName = $instanceName
+                InstanceId   = $instanceId
+                Memory_Util  = $memUtil
+                VolumeId     = $volId
+                Vol_Size_GB  = $vol.Size
+                Vol_Type     = $vol.VolumeType
+                Disk_Util    = $diskUtil
+                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
+            }
+        }
+    }
+}
 
+$report | Format-Table -AutoSize
