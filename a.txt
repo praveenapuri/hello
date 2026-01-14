@@ -1,12 +1,13 @@
-# 1. Setup Timeframe (90 Days)
-$Region = "us-east-1" # Change to your region
+# 1. Setup (90 Days)
+$Region = "us-east-1" 
 Set-DefaultAWSRegion -Region $Region
 
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
 
-# CloudWatch requires a Period of 3600 (1 hour) for data older than 63 days
-$Period = 3600 
+# 6-hour period (21600 seconds) ensures we stay under the 1440 limit for 90 days
+# (90 days / 6 hours = 360 datapoints, which is safe)
+$Period = 21600 
 
 $reservations = Get-EC2Instance
 $report = foreach ($res in $reservations) {
@@ -14,7 +15,7 @@ $report = foreach ($res in $reservations) {
         $instanceId = $ins.InstanceId
         $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-        # --- Average CPU Utilization (90 Days) ---
+        # --- Avg CPU Utilization ---
         $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" `
             -MetricName "CPUUtilization" `
             -Dimension @{Name="InstanceId"; Value=$instanceId} `
@@ -23,8 +24,7 @@ $report = foreach ($res in $reservations) {
         
         $cpuAvg = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "No Data" }
 
-        # --- Average Memory Utilization (90 Days) ---
-        # Note: Windows Agent default is usually "Memory % Committed Bytes In Use"
+        # --- Avg Memory Utilization (Windows Specific) ---
         $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
             -MetricName "Memory % Committed Bytes In Use" `
             -Dimension @{Name="InstanceId"; Value=$instanceId} `
@@ -33,11 +33,22 @@ $report = foreach ($res in $reservations) {
 
         $memAvg = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
 
-        [PSCustomObject]@{
-            InstanceName = $instanceName
-            InstanceID   = $instanceId
-            Avg_CPU_90d  = $cpuAvg
-            Avg_Mem_90d  = $memAvg
+        # --- Get Volume and Disk Details ---
+        foreach ($blk in $ins.BlockDeviceMappings) {
+            $volId = $blk.Ebs.VolumeId
+            $vol = Get-EC2Volume -VolumeId $volId
+            
+            [PSCustomObject]@{
+                InstanceName = $instanceName
+                InstanceID   = $instanceId
+                Vol_ID       = $volId
+                Vol_Type     = $vol.VolumeType
+                Size_GB      = $vol.Size
+                Avg_CPU_90d  = $cpuAvg
+                Avg_Mem_90d  = $memAvg
+                State        = $vol.State
+                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
+            }
         }
     }
 }
