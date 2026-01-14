@@ -1,33 +1,50 @@
-Root filesystem
+# 1. Configuration
+$Region = "us-east-1"  # <--- Change to your region
+Set-DefaultAWSRegion -Region $Region
 
-vol02539d5d4f651a04c → /dev/nvme0n1p2 → mounted as / (no LVM).
+$endTime = Get-Date
+$startTime = $endTime.AddDays(-90)
 
-EPIC journal
+# 7200 seconds (2 hours) ensures we get ~1080 datapoints for 90 days, staying under the 1440 limit.
+$Period = 7200 
 
-vol0a68e5cadf023e98a → /dev/nvme1n1 → VG epicjrnvg → LV epicjrnlv → /epic/jrn.
+# 2. Fetch Instances
+$reservations = Get-EC2Instance
+$instanceList = $reservations.Instances
 
-EPIC main app / files
+$report = foreach ($ins in $instanceList) {
+    $instanceId = $ins.InstanceId
+    $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-vol05bd88386942bf561 → /dev/nvme5n1 → VG epicvg → LVs:
+    # --- Avg CPU Utilization (90 Days) ---
+    $cpuStats = Get-CWMetricStatistic -Namespace "AWS/EC2" `
+        -MetricName "CPUUtilization" `
+        -Dimension @{Name="InstanceId"; Value=$instanceId} `
+        -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
+        Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    
+    $cpuAvg = if ($cpuStats.Count -gt 0) { "{0:N2}%" -f $cpuStats.Average } else { "No Data" }
 
-epiclv → /epic
+    # --- Avg Memory Utilization (90 Days) ---
+    # Windows default metric name: "Memory % Committed Bytes In Use"
+    $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
+        -MetricName "Memory % Committed Bytes In Use" `
+        -Dimension @{Name="InstanceId"; Value=$instanceId} `
+        -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
+        Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
 
-epictmplv → /epic/tmp
+    $memAvg = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
 
-epicfileslv → /epicfiles.
+    [PSCustomObject]@{
+        EC2_Name      = $instanceName
+        EC2_ID        = $instanceId
+        Avg_CPU_90d   = $cpuAvg
+        Avg_Mem_90d   = $memAvg
+    }
+}
 
-SUP data
+# 3. Output Results
+Write-Host "`n--- EC2 Usage Report (Last 90 Days) ---" -ForegroundColor Cyan
+$report | Format-Table -AutoSize
 
-vol0c2e24dcbdee87cda, vol042b5b3f5dac7f4c2, vol093a900cb69416e29, vol01e754ced68296a8f
-→ /dev/nvme3n1, 4n1, 6n1, 11n1 → VG supvg → LV sup01lv → /epic/sup01.
-
-REL data
-
-vol002a3edd6e0aa984b, vol00b2d19b6df69a689, vol0dd3a8e1f3be2c5a1, vol0493038d2fe2ba260
-→ /dev/nvme8n1, 9n1, 10n1, 12n1 → VG relvg → LV rel01lv → /epic/rel01.
-
-Unutilized / spare
-
-vol089fd859dd3b16926 (/dev/nvme2n1) – not in LVM, no filesystem.
-
-vol0637447d0da258b82 (/dev/nvme7n1) – initialized as PV, but not added to any VG yet.
+Write-Host "Total Number of EC2 Instances: $($instanceList.Count)" -ForegroundColor Yellow
