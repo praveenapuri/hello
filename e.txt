@@ -1,3 +1,5 @@
+The service returned an error with Error Code InvalidDocument and HTTP Body: {"__type":"InvalidDocument"}
+
 # 1. Exclusion List
 $ExcludeList = @("i-0abcdef1234567890", "i-0123456789abcdefg") 
 
