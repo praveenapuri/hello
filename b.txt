@@ -1,26 +1,12 @@
-# This will list every metric name currently in your CloudWatch "CWAgent" namespace
-Get-CWMetricList -Namespace "CWAgent" | Select-Object MetricName -Unique
+Write-Host "Searching for all available Disk Metric Dimensions..." -ForegroundColor Cyan
 
+# Fetches all variations of how Disk Space is being reported
+$allMetrics = Get-CWMetricList -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space"
 
-disk_inodes_free
-disk_used_percent
-diskio_io_time
-LogicalDisk % Free Space
-Memory Available MBytes
-LogicalDisk Free Megabytes
-mem_used_percent
-Memory % Committed Bytes In Use
-swap_used_percent
-
-
-$testId = "i-xxxxxxx" # Put one of your Instance IDs here
-Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
-    -Dimension @{Name="InstanceId"; Value=$testId} `
-    -StartTime (Get-Date).AddHours(-1) -EndTime (Get-Date) -Period 3600 -Statistics Average
-
-
-
-$testId = "i-xxxxxxx" # <--- Put one of your Instance IDs here
-Get-CWMetricList -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" | 
-    Where-Object { $_.Dimensions.Value -eq $testId } | 
-    Select-Object -ExpandProperty Dimensions
+$allMetrics | ForEach-Object {
+    $dims = $_.Dimensions
+    [PSCustomObject]@{
+        MetricName = $_.MetricName
+        Dimensions = ($dims | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join " | "
+    }
+} | Out-GridView -Title "Search for your Instance IDs here"
