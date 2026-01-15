@@ -1,50 +1,29 @@
-# 1. Setup
-Set-DefaultAWSRegion -Region us-east-1  # Change to your region
-$endTime = Get-Date
-$startTime = $endTime.AddMinutes(-30)
+[Amazon.AWSConfigs]::CorrectForClockSkew = $true
+Set-DefaultAWSRegion -Region "us-east-1"
 
 $reservations = Get-EC2Instance
 $report = foreach ($res in $reservations) {
     foreach ($ins in $res.Instances) {
         $instanceId = $ins.InstanceId
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value
+        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-        # --- Get Memory Utilization ---
-        # Note: We check common metric names for Linux (mem_used_percent) and Windows (% Committed Bytes In Use)
-        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
-            -MetricName "mem_used_percent" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} `
-            -StartTime $startTime -EndTime $endTime -Period 300 -Statistics Average | 
-            Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-
-        $memUtil = if ($memStats) { "{0:N2}%" -f $memStats.Average } else { "No Agent Data" }
-
-        # --- Get Volume Details ---
         foreach ($blk in $ins.BlockDeviceMappings) {
-            $volId = $blk.Ebs.VolumeId
-            $vol = Get-EC2Volume -VolumeId $volId
-            
-            # Get Disk Utilization
-            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" `
-                -MetricName "disk_used_percent" `
-                -Dimension @{Name="InstanceId"; Value=$instanceId} `
-                -StartTime $startTime -EndTime $endTime -Period 300 -Statistics Average | 
-                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-
-            $diskUtil = if ($diskStats) { "{0:N2}%" -f $diskStats.Average } else { "No Agent Data" }
+            $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
+            $volName = ($vol.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "No Vol Name"
 
             [PSCustomObject]@{
-                InstanceName = $instanceName
-                InstanceId   = $instanceId
-                Memory_Util  = $memUtil
-                VolumeId     = $volId
-                Vol_Size_GB  = $vol.Size
-                Vol_Type     = $vol.VolumeType
-                Disk_Util    = $diskUtil
-                IsRoot       = ($ins.RootDeviceName -eq $blk.DeviceName)
+                EC2_Name    = $instanceName
+                EC2_ID      = $instanceId
+                Vol_Name    = $volName
+                Vol_ID      = $vol.VolumeId
+                Size_GB     = $vol.Size
+                Type        = $vol.VolumeType
+                State       = $vol.State
+                IsRoot      = ($ins.RootDeviceName -eq $blk.DeviceName)
             }
         }
     }
 }
 
 $report | Format-Table -AutoSize
+Write-Host "Total Instances: $($reservations.Instances.Count)" -ForegroundColor Green
