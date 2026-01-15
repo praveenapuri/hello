@@ -1,15 +1,19 @@
-# 1. Hardcode your Linux Instance ID here
-$LinuxInstanceId = "i-0abcdef1234567890" 
+# 1. Add all Instance IDs you want to exclude to this list
+$ExcludeList = @(
+    "i-0abcdef1234567890", 
+    "i-0123456789abcdefg",
+    "i-0987654321example"
+) 
 
-# 2. Get all managed instances and exclude the Linux one
-$targetInstances = (Get-SSMInstanceInformation).InstanceId | Where-Object { $_ -ne $LinuxInstanceId }
+# 2. Get all managed instances and exclude the list
+$targetInstances = (Get-SSMInstanceInformation).InstanceId | Where-Object { $_ -notin $ExcludeList }
 
-Write-Host "Targeting $($targetInstances.Count) Windows instances. (Excluding Linux: $LinuxInstanceId)" -ForegroundColor Cyan
+Write-Host "Targeting $($targetInstances.Count) Windows instances." -ForegroundColor Cyan
 
 # 3. Define the JSON config
 $CWConfig = '{"metrics":{"append_dimensions":{"InstanceId":"${aws:InstanceId}"},"metrics_collected":{"LogicalDisk":{"measurement":["% Free Space"],"resources":["*"]},"Memory":{"measurement":["% Committed Bytes In Use"]}}}}'
 
-# 4. Push the command using the filtered list of IDs
+# 4. Push the command
 Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
     -InstanceId $targetInstances `
     -Parameter @{
