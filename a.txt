@@ -1,50 +1,31 @@
-[Amazon.AWSConfigs]::CorrectForClockSkew = $true
-Set-DefaultAWSRegion -Region "us-east-1"
-
-$endTime = Get-Date
-$startTime = $endTime.AddDays(-90)
-$Period = 21600 
-
-$reservations = Get-EC2Instance
-$report = foreach ($res in $reservations) {
-    foreach ($ins in $res.Instances) {
-        $instanceId = $ins.InstanceId
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
-
-        # --- Memory Stats ---
-        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
-            -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
-        $memVal = if ($memStats.Count -gt 0) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
-
-        # --- Disk Stats (Multi-Dimension Attempt) ---
-        # We try to get the metric for the specific InstanceId. 
-        # If your agent doesn't send InstanceID, we try to match by 'instance' (Drive letter)
-        $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="instance"; Value="C:"}, @{Name="objectname"; Value="LogicalDisk"} `
-            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-            Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-
-        if (-not $diskStats) {
-            # Fallback: Try with just InstanceId and instance (C:)
-            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
-                -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="instance"; Value="C:"} `
-                -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-        }
-
-        $diskVal = if ($diskStats) { 
-            $used = 100 - $diskStats.Average
-            "{0:N2}%" -f $used 
-        } else { "Check Agent Config" }
-
-        [PSCustomObject]@{
-            EC2_Name      = $instanceName
-            EC2_ID        = $instanceId
-            Avg_Mem_90d   = $memVal
-            Disk_Used_Pct = $diskVal
+# 1. Define the updated Config (Ensures InstanceId is appended)
+$JSONConfig = @'
+{
+    "metrics": {
+        "append_dimensions": {
+            "InstanceId": "${aws:InstanceId}"
+        },
+        "metrics_collected": {
+            "LogicalDisk": {
+                "measurement": ["% Free Space"],
+                "resources": ["*"]
+            },
+            "Memory": {
+                "measurement": ["% Committed Bytes In Use"]
+            }
         }
     }
 }
+'@
 
-$report | Format-Table -AutoSize
+# 2. Send the command to all Windows Instances
+# This installs/updates the config and restarts the agent
+Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
+    -Parameter @{
+        "action" = "configure"
+        "mode"   = "ec2"
+        "optionalConfigurationSource" = "online"
+        "optionalConfigurationLocation" = $JSONConfig
+        "optionalRestart" = "yes"
+    } `
+    -Target @{ Key="tag:Platform"; Values="Windows" } # Or use Key="InstanceIds"; Values="*"
