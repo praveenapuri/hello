@@ -1,38 +1,43 @@
-# 1. Global Fixes
+# Mandatory fix for Clock Skew
 [Amazon.AWSConfigs]::CorrectForClockSkew = $true
-Set-DefaultAWSRegion -Region "us-east-1" # <--- Update if needed
 
+# Set your region
+$Region = "us-east-1"
+Set-DefaultAWSRegion -Region $Region
+
+try {
+    Write-Host "Connecting to AWS..." -ForegroundColor Cyan
+    $instances = (Get-EC2Instance -ErrorAction Stop).Instances
+    Write-Host "Success! Found $($instances.Count) instances." -ForegroundColor Green
+}
+catch {
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    if ($_.Exception.Message -like "*Expired*") {
+        Write-Host "ACTION REQUIRED: Run 'aws sso login' or refresh your Access Keys." -ForegroundColor Yellow
+    }
+    return
+}
+
+# Time settings for 90-day report
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
-$Period = 21600 # 6-hour chunks for 90-day stability
+$Period = 21600 # 6-hour chunks
 
-Write-Host "Starting report generation..." -ForegroundColor Cyan
-
-# 2. Gather Data
-$instances = (Get-EC2Instance).Instances
 $report = foreach ($ins in $instances) {
-    $instanceId = $ins.InstanceId
-    $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
+    $id = $ins.InstanceId
+    $name = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-    # Metrics
-    $cpu = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
-        -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
-        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
-    
-    $mem = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
-        -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
-        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    # CPU/Mem Metrics
+    $cpu = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    $mem = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
 
     foreach ($blk in $ins.BlockDeviceMappings) {
         $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
-        $disk = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="instance"; Value="C:"} `
-            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
-            Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
+        $disk = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" -Dimension @{Name="InstanceId"; Value=$id}, @{Name="instance"; Value="C:"} -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
 
         [PSCustomObject]@{
-            EC2_Name      = $instanceName
-            EC2_ID        = $instanceId
+            Instance_Name = $name
+            Instance_ID   = $id
             Vol_ID        = $blk.Ebs.VolumeId
             Size_GB       = $vol.Size
             Type          = $vol.VolumeType
@@ -45,8 +50,7 @@ $report = foreach ($ins in $instances) {
     }
 }
 
-# 3. Export to current directory
-$filePath = Join-Path -Path (Get-Location) -ChildPath "AWS_90Day_Report.csv"
+# Save to current directory
+$filePath = Join-Path -Path (Get-Location) -ChildPath "AWS_90Day_Inventory.csv"
 $report | Export-Csv -Path $filePath -NoTypeInformation -Encoding utf8
-
-Write-Host "Done! File saved to: $filePath" -ForegroundColor Green
+Write-Host "File saved: $filePath" -ForegroundColor Green
