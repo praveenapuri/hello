@@ -1,45 +1,32 @@
-# 1. Force Clock Sync and Module check
-[Amazon.AWSConfigs]::CorrectForClockSkew = $true
-Set-DefaultAWSRegion -Region "us-east-1"
-
-try {
-    $instances = (Get-EC2Instance -ErrorAction Stop).Instances
-    Write-Host "Authentication Successful. Processing $($instances.Count) instances..." -ForegroundColor Green
-}
-catch {
-    Write-Error "Authentication Failed: $($_.Exception.Message)"
-    Write-Host "Try running 'aws sso login' or checking your credentials." -ForegroundColor Yellow
-    return
-}
-
-# 2. Timeframe Setup
-$endTime = Get-Date
-$startTime = $endTime.AddDays(-90)
-$Period = 21600 # 6-hour chunks for 90-day stability
-
-$report = foreach ($ins in $instances) {
-    $id = $ins.InstanceId
-    $name = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
-
-    # CPU Statistics
-    $cpu = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
-        -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime `
-        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | 
-        Measure-Object -Property Average -Average
-    
-    # Memory Statistics (Windows Agent)
-    $mem = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
-        -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime `
-        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | 
-        Measure-Object -Property Average -Average
-
-    [PSCustomObject]@{
-        EC2_Name      = $name
-        EC2_ID        = $id
-        Avg_CPU_90d   = if ($cpu.Count -gt 0) { "{0:N2}%" -f $cpu.Average } else { "N/A" }
-        Avg_Mem_90d   = if ($mem.Count -gt 0) { "{0:N2}%" -f $mem.Average } else { "No Agent" }
+# This JSON adds the InstanceId dimension to your Windows metrics
+$CWConfig = @'
+{
+    "metrics": {
+        "append_dimensions": {
+            "InstanceId": "${aws:InstanceId}"
+        },
+        "metrics_collected": {
+            "LogicalDisk": {
+                "measurement": ["% Free Space"],
+                "resources": ["*"],
+                "append_dimensions": { "InstanceId": "${aws:InstanceId}" }
+            },
+            "Memory": {
+                "measurement": ["% Committed Bytes In Use"],
+                "append_dimensions": { "InstanceId": "${aws:InstanceId}" }
+            }
+        }
     }
 }
+'@
 
-$report | Format-Table -AutoSize
-Write-Host "Total Instances: $($instances.Count)" -ForegroundColor Cyan
+# Push this config to all Windows instances via SSM
+Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
+    -Parameter @{
+        "action" = "configure"
+        "mode"   = "ec2"
+        "optionalConfigurationSource" = "online"
+        "optionalConfigurationLocation" = $CWConfig
+        "optionalRestart" = "yes"
+    } `
+    -Target @{ Key="tag:Platform"; Values="Windows" }
