@@ -1,59 +1,52 @@
-# 1. Configuration
-$Region = "us-east-1"  # <--- CHANGE THIS to your region
-Set-DefaultAWSRegion -Region $Region
+# 1. Global Fixes
+[Amazon.AWSConfigs]::CorrectForClockSkew = $true
+Set-DefaultAWSRegion -Region "us-east-1" # <--- Update if needed
 
 $endTime = Get-Date
-$startTime = $endTime.AddMinutes(-60)
+$startTime = $endTime.AddDays(-90)
+$Period = 21600 # 6-hour chunks for 90-day stability
 
-# 2. Fetch Instances
-$reservations = Get-EC2Instance
-if (-not $reservations) { Write-Error "No instances found in $Region"; return }
+Write-Host "Starting report generation..." -ForegroundColor Cyan
 
-$report = foreach ($res in $reservations) {
-    foreach ($ins in $res.Instances) {
-        $instanceId = $ins.InstanceId
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed Instance"
+# 2. Gather Data
+$instances = (Get-EC2Instance).Instances
+$report = foreach ($ins in $instances) {
+    $instanceId = $ins.InstanceId
+    $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-        # --- Fetch Memory Utilization (Last 1 Hour) ---
-        $memStats = Get-CWMetricStatistic -Namespace "CWAgent" `
-            -MetricName "mem_used_percent" `
-            -Dimension @{Name="InstanceId"; Value=$instanceId} `
-            -StartTime $startTime -EndTime $endTime -Period 3600 -Statistics Average | 
+    # Metrics
+    $cpu = Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" `
+        -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
+        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+    
+    $mem = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
+        -Dimension @{Name="InstanceId"; Value=$instanceId} -StartTime $startTime -EndTime $endTime `
+        -Period $Period -Statistics Average | Select-Object -ExpandProperty Datapoints | Measure-Object -Property Average -Average
+
+    foreach ($blk in $ins.BlockDeviceMappings) {
+        $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
+        $disk = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
+            -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="instance"; Value="C:"} `
+            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average | 
             Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-        $memValue = if ($memStats) { "{0:N2}%" -f $memStats.Average } else { "No Agent" }
 
-        # --- Loop through each attached volume ---
-        foreach ($blk in $ins.BlockDeviceMappings) {
-            $volId = $blk.Ebs.VolumeId
-            $vol = Get-EC2Volume -VolumeId $volId
-            
-            # Get Volume Name (from Volume Tags)
-            $volName = ($vol.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed Volume"
-
-            # Fetch Disk Utilization for THIS specific volume
-            $diskStats = Get-CWMetricStatistic -Namespace "CWAgent" `
-                -MetricName "disk_used_percent" `
-                -Dimension @{Name="InstanceId"; Value=$instanceId}, @{Name="device"; Value=$blk.DeviceName} `
-                -StartTime $startTime -EndTime $endTime -Period 3600 -Statistics Average | 
-                Select-Object -ExpandProperty Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1
-            $diskValue = if ($diskStats) { "{0:N2}%" -f $diskStats.Average } else { "No Agent" }
-
-            # Create the data object
-            [PSCustomObject]@{
-                Instance_Name = $instanceName
-                Instance_ID   = $instanceId
-                Vol_ID        = $volId
-                Vol_Name      = $volName
-                Memory_Util   = $memValue
-                Disk_Util     = $diskValue
-                Size_GB       = $vol.Size
-                Type          = $vol.VolumeType
-                State         = $vol.State
-                IsRoot        = ($ins.RootDeviceName -eq $blk.DeviceName)
-            }
+        [PSCustomObject]@{
+            EC2_Name      = $instanceName
+            EC2_ID        = $instanceId
+            Vol_ID        = $blk.Ebs.VolumeId
+            Size_GB       = $vol.Size
+            Type          = $vol.VolumeType
+            State         = $vol.State
+            IsRoot        = ($ins.RootDeviceName -eq $blk.DeviceName)
+            Avg_CPU_90d   = if ($cpu.Count -gt 0) { "{0:N2}%" -f $cpu.Average } else { "N/A" }
+            Avg_Mem_90d   = if ($mem.Count -gt 0) { "{0:N2}%" -f $mem.Average } else { "No Agent" }
+            Disk_Used_Pct = if ($disk) { "{0:N2}%" -f (100 - $disk.Average) } else { "No Agent" }
         }
     }
 }
 
-# 3. Output to Screen
-$report | Format-Table -AutoSize
+# 3. Export to current directory
+$filePath = Join-Path -Path (Get-Location) -ChildPath "AWS_90Day_Report.csv"
+$report | Export-Csv -Path $filePath -NoTypeInformation -Encoding utf8
+
+Write-Host "Done! File saved to: $filePath" -ForegroundColor Green
