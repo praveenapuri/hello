@@ -1,65 +1,42 @@
-# Mandatory Clock/Session Fix
 [Amazon.AWSConfigs]::CorrectForClockSkew = $true
 Set-DefaultAWSRegion -Region "us-east-1" 
 
 $endTime = Get-Date
 $startTime = $endTime.AddDays(-90)
-$Period = 21600 
+$Period = 21600 # 6-hour chunks
 
-Write-Host "Fetching EC2 Fleet... please wait." -ForegroundColor Cyan
 $instances = (Get-EC2Instance).Instances
-
 $report = foreach ($ins in $instances) {
     $id = $ins.InstanceId
     $name = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
 
-    # --- MEMORY: Try searching without strict dimensions first ---
-    $memData = Get-CWMetricStatistic -Namespace "CWAgent" `
-        -MetricName "Memory % Committed Bytes In Use" `
-        -Dimension @{Name="InstanceId"; Value=$id} `
+    # --- Memory (Using the 'objectname' dimension you discovered) ---
+    $memData = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "Memory % Committed Bytes In Use" `
+        -Dimension @{Name="InstanceId"; Value=$id}, @{Name="objectname"; Value="Memory"} `
         -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average
     
     $memAvg = if ($memData.Datapoints) { 
         "{0:N2}%" -f ($memData.Datapoints | Measure-Object -Property Average -Average).Average 
-    } else { "No Agent" }
+    } else { "No ID Linked" }
 
-    # --- CPU: Standard AWS Metric ---
-    $cpuData = Get-CWMetricStatistic -Namespace "AWS/EC2" `
-        -MetricName "CPUUtilization" -Dimension @{Name="InstanceId"; Value=$id} `
+    # --- Disk (Using common Windows dimensions) ---
+    $diskData = Get-CWMetricStatistic -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space" `
+        -Dimension @{Name="InstanceId"; Value=$id}, @{Name="objectname"; Value="LogicalDisk"}, @{Name="instance"; Value="C:"} `
         -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average
-    $cpuAvg = if ($cpuData.Datapoints) { "{0:N2}%" -f ($cpuData.Datapoints | Measure-Object -Property Average -Average).Average } else { "N/A" }
+    
+    $diskVal = if ($diskData.Datapoints) {
+        $free = ($diskData.Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1).Average
+        "{0:N2}%" -f (100 - $free)
+    } else { "No ID Linked" }
 
-    foreach ($blk in $ins.BlockDeviceMappings) {
-        $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
-        
-        # --- DISK: Searching for any LogicalDisk metric for this ID ---
-        $diskData = Get-CWMetricStatistic -Namespace "CWAgent" `
-            -MetricName "LogicalDisk % Free Space" `
-            -Dimension @{Name="InstanceId"; Value=$id} `
-            -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average
-        
-        $diskVal = if ($diskData.Datapoints) {
-            $free = ($diskData.Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 1).Average
-            "{0:N2}%" -f (100 - $free)
-        } else { "No Agent" }
-
-        [PSCustomObject]@{
-            Instance_Name = $name
-            Instance_ID   = $id
-            Vol_ID        = $blk.Ebs.VolumeId
-            Size_GB       = $vol.Size
-            Type          = $vol.VolumeType
-            State         = $vol.State
-            IsRoot        = ($ins.RootDeviceName -eq $blk.DeviceName)
-            Avg_CPU_90d   = $cpuAvg
-            Avg_Mem_90d   = $memAvg
-            Disk_Used_Pct = $diskVal
-        }
+    [PSCustomObject]@{
+        EC2_Name      = $name
+        EC2_ID        = $id
+        Avg_CPU_90d   = (Get-CWMetricStatistic -Namespace "AWS/EC2" -MetricName "CPUUtilization" -Dimension @{Name="InstanceId"; Value=$id} -StartTime $startTime -EndTime $endTime -Period $Period -Statistics Average).Datapoints.Average
+        Avg_Mem_90d   = $memAvg
+        Disk_Used_Pct = $diskVal
     }
 }
 
-# Save to CSV in current directory
-$csvPath = Join-Path -Path (Get-Location) -ChildPath "Final_AWS_Performance_Report.csv"
-$report | Export-Csv -Path $csvPath -NoTypeInformation -Encoding utf8
-
-Write-Host "Report generated: $csvPath" -ForegroundColor Green
+$report | Export-Csv -Path ".\Final_Windows_Performance.csv" -NoTypeInformation
+Write-Host "Report Saved to Current Directory." -ForegroundColor Green
