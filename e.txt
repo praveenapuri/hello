@@ -1,25 +1,47 @@
-# 1. Add all Instance IDs you want to exclude to this list
-$ExcludeList = @(
-    "i-0abcdef1234567890", 
-    "i-0123456789abcdefg",
-    "i-0987654321example"
-) 
+# 1. Exclusion List
+$ExcludeList = @("i-0abcdef1234567890", "i-0123456789abcdefg") 
 
-# 2. Get all managed instances and exclude the list
+# 2. Get Targets
 $targetInstances = (Get-SSMInstanceInformation).InstanceId | Where-Object { $_ -notin $ExcludeList }
 
-Write-Host "Targeting $($targetInstances.Count) Windows instances." -ForegroundColor Cyan
-
-# 3. Define the JSON config
-$CWConfig = '{"metrics":{"append_dimensions":{"InstanceId":"${aws:InstanceId}"},"metrics_collected":{"LogicalDisk":{"measurement":["% Free Space"],"resources":["*"]},"Memory":{"measurement":["% Committed Bytes In Use"]}}}}'
-
-# 4. Push the command
-Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
-    -InstanceId $targetInstances `
-    -Parameter @{
-        "action"                        = "configure"
-        "mode"                          = "ec2"
-        "optionalConfigurationSource"   = "online"
-        "optionalConfigurationLocation" = $CWConfig
-        "optionalRestart"               = "yes"
+# 3. The JSON Config (Strictly formatted)
+$CWConfig = @'
+{
+    "metrics": {
+        "append_dimensions": {
+            "InstanceId": "${aws:InstanceId}"
+        },
+        "metrics_collected": {
+            "LogicalDisk": {
+                "measurement": ["% Free Space"],
+                "resources": ["*"]
+            },
+            "Memory": {
+                "measurement": ["% Committed Bytes In Use"]
+            }
+        }
     }
+}
+'@
+
+# 4. Define Parameters strictly for the SSM Document
+$params = @{
+    "action"                        = @("configure")
+    "mode"                          = @("ec2")
+    "optionalConfigurationSource"   = @("online")
+    "optionalConfigurationLocation" = @($CWConfig)
+    "optionalRestart"               = @("yes")
+}
+
+# 5. Send Command
+try {
+    Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
+        -InstanceId $targetInstances `
+        -Parameter $params -ErrorAction Stop
+    Write-Host "Command sent successfully to $($targetInstances.Count) instances." -ForegroundColor Green
+}
+catch {
+    Write-Host "Failed to send command: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "Checking if document 'AmazonCloudWatch-ManageAgent' exists..." -ForegroundColor Yellow
+    Get-SSMDocument -Name "AmazonCloudWatch-ManageAgent" | Select-Object Name, DocumentVersion
+}
