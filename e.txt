@@ -1,32 +1,19 @@
-# This JSON adds the InstanceId dimension to your Windows metrics
-$CWConfig = @'
-{
-    "metrics": {
-        "append_dimensions": {
-            "InstanceId": "${aws:InstanceId}"
-        },
-        "metrics_collected": {
-            "LogicalDisk": {
-                "measurement": ["% Free Space"],
-                "resources": ["*"],
-                "append_dimensions": { "InstanceId": "${aws:InstanceId}" }
-            },
-            "Memory": {
-                "measurement": ["% Committed Bytes In Use"],
-                "append_dimensions": { "InstanceId": "${aws:InstanceId}" }
-            }
-        }
-    }
-}
-'@
+# 1. Ensure the module is loaded
+Import-Module AWS.Tools.SimpleSystemsManagement
 
-# Push this config to all Windows instances via SSM
+# 2. Define the JSON as a single-line string to avoid parsing errors
+$CWConfig = '{"metrics":{"append_dimensions":{"InstanceId":"${aws:InstanceId}"},"metrics_collected":{"LogicalDisk":{"measurement":["% Free Space"],"resources":["*"]},"Memory":{"measurement":["% Committed Bytes In Use"]}}}}'
+
+# 3. Use explicit parameter keys
+$params = @{
+    "action"                        = "configure"
+    "mode"                          = "ec2"
+    "optionalConfigurationSource"   = "online"
+    "optionalConfigurationLocation" = $CWConfig
+    "optionalRestart"               = "yes"
+}
+
+# 4. Target your instances (Adjust the Tag key/value to match your environment)
 Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
-    -Parameter @{
-        "action" = "configure"
-        "mode"   = "ec2"
-        "optionalConfigurationSource" = "online"
-        "optionalConfigurationLocation" = $CWConfig
-        "optionalRestart" = "yes"
-    } `
-    -Target @{ Key="tag:Platform"; Values="Windows" }
+    -Parameter $params `
+    -Target @{ Key="tag:OS"; Values="Windows" } # <--- Change 'tag:OS' to 'tag:Name' or use InstanceIds if needed
