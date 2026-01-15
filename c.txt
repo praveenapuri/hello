@@ -25,5 +25,4 @@ $report = foreach ($res in $reservations) {
     }
 }
 
-$report | Format-Table -AutoSize
-Write-Host "Total Instances: $($reservations.Instances.Count)" -ForegroundColor Green
+$report | Export-Csv -Path "EC2_90Day_Performance.csv" -NoTypeInformation
