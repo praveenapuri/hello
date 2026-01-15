@@ -54,3 +54,11 @@ $report = foreach ($ins in $instances) {
 $filePath = Join-Path -Path (Get-Location) -ChildPath "AWS_90Day_Inventory.csv"
 $report | Export-Csv -Path $filePath -NoTypeInformation -Encoding utf8
 Write-Host "File saved: $filePath" -ForegroundColor Green
+
+
+
+# 1. Force the SDK to ignore your local clock skew
+[Amazon.AWSConfigs]::CorrectForClockSkew = $true
+
+# 2. Re-initialize your session (Use your profile name if not 'default')
+Initialize-AWSDefaultConfiguration -Region us-east-1
