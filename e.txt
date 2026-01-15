@@ -1,19 +1,21 @@
-# 1. Ensure the module is loaded
-Import-Module AWS.Tools.SimpleSystemsManagement
+# 1. Hardcode your Linux Instance ID here
+$LinuxInstanceId = "i-0abcdef1234567890" 
 
-# 2. Define the JSON as a single-line string to avoid parsing errors
+# 2. Get all managed instances and exclude the Linux one
+$targetInstances = (Get-SSMInstanceInformation).InstanceId | Where-Object { $_ -ne $LinuxInstanceId }
+
+Write-Host "Targeting $($targetInstances.Count) Windows instances. (Excluding Linux: $LinuxInstanceId)" -ForegroundColor Cyan
+
+# 3. Define the JSON config
 $CWConfig = '{"metrics":{"append_dimensions":{"InstanceId":"${aws:InstanceId}"},"metrics_collected":{"LogicalDisk":{"measurement":["% Free Space"],"resources":["*"]},"Memory":{"measurement":["% Committed Bytes In Use"]}}}}'
 
-# 3. Use explicit parameter keys
-$params = @{
-    "action"                        = "configure"
-    "mode"                          = "ec2"
-    "optionalConfigurationSource"   = "online"
-    "optionalConfigurationLocation" = $CWConfig
-    "optionalRestart"               = "yes"
-}
-
-# 4. Target your instances (Adjust the Tag key/value to match your environment)
+# 4. Push the command using the filtered list of IDs
 Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
-    -Parameter $params `
-    -Target @{ Key="tag:OS"; Values="Windows" } # <--- Change 'tag:OS' to 'tag:Name' or use InstanceIds if needed
+    -InstanceId $targetInstances `
+    -Parameter @{
+        "action"                        = "configure"
+        "mode"                          = "ec2"
+        "optionalConfigurationSource"   = "online"
+        "optionalConfigurationLocation" = $CWConfig
+        "optionalRestart"               = "yes"
+    }
