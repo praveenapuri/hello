@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2.2",
-  "description": "A composite document for updating CloudWatch agent.",
+  "description": "A composite document for updating and configuring the CloudWatch agent with specific disk and memory metrics.",
   "mainSteps": [
     {
       "inputs": {
@@ -40,10 +40,24 @@
       },
       "name": "installCWAgent",
       "action": "aws:runDocument"
+    },
+    {
+      "inputs": {
+        "runCommand": [
+          "$CWConfig = '{\"metrics\":{\"append_dimensions\":{\"InstanceId\":\"${aws:InstanceId}\"},\"metrics_collected\":{\"LogicalDisk\":{\"measurement\":[\"% Free Space\"],\"resources\":[\"*\"]},\"Memory\":{\"measurement\":[\"% Committed Bytes In Use\"]}}}}'",
+          "$ConfigPath = if ($IsWindows) { \"$env:ProgramFiles\\Amazon\\AmazonCloudWatchAgent\\config.json\" } else { \"/opt/aws/amazon-cloudwatch-agent/bin/config.json\" }",
+          "$CWConfig | Out-File -FilePath $ConfigPath -Encoding utf8",
+          "& \"$env:ProgramFiles\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1\" -a append-config -m ec2 -c file:$ConfigPath -s"
+        ]
+      },
+      "name": "configureCWAgent",
+      "action": "aws:runPowerShellScript",
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Windows"
+        ]
+      }
     }
   ]
 }
-
-
-# 3. Define the JSON config
-$CWConfig = '{"metrics":{"append_dimensions":{"InstanceId":"${aws:InstanceId}"},"metrics_collected":{"LogicalDisk":{"measurement":["% Free Space"],"resources":["*"]},"Memory":{"measurement":["% Committed Bytes In Use"]}}}}'
