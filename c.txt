@@ -1,28 +1,45 @@
-[Amazon.AWSConfigs]::CorrectForClockSkew = $true
-Set-DefaultAWSRegion -Region "us-east-1"
-
-$reservations = Get-EC2Instance
-$report = foreach ($res in $reservations) {
-    foreach ($ins in $res.Instances) {
-        $instanceId = $ins.InstanceId
-        $instanceName = ($ins.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "Unnamed"
-
-        foreach ($blk in $ins.BlockDeviceMappings) {
-            $vol = Get-EC2Volume -VolumeId $blk.Ebs.VolumeId
-            $volName = ($vol.Tags | Where-Object { $_.Key -eq "Name" }).Value ?? "No Vol Name"
-
-            [PSCustomObject]@{
-                EC2_Name    = $instanceName
-                EC2_ID      = $instanceId
-                Vol_Name    = $volName
-                Vol_ID      = $vol.VolumeId
-                Size_GB     = $vol.Size
-                Type        = $vol.VolumeType
-                State       = $vol.State
-                IsRoot      = ($ins.RootDeviceName -eq $blk.DeviceName)
-            }
-        }
+{
+  "schemaVersion": "2.2",
+  "description": "A composite document for updating CloudWatch agent.",
+  "mainSteps": [
+    {
+      "inputs": {
+        "runCommand": [
+          "sleep 1800"
+        ]
+      },
+      "name": "first",
+      "action": "aws:runShellScript",
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Linux"
+        ]
+      }
+    },
+    {
+      "inputs": {
+        "runCommand": [
+          "Start-Sleep -Seconds 1800"
+        ]
+      },
+      "name": "second",
+      "action": "aws:runPowerShellScript",
+      "precondition": {
+        "StringEquals": [
+          "platformType",
+          "Windows"
+        ]
+      }
+    },
+    {
+      "inputs": {
+        "documentParameters": "{\"action\":\"Install\",\"name\" : \"AmazonCloudWatchAgent\"}",
+        "documentType": "SSMDocument",
+        "documentPath": "AWS-ConfigureAWSPackage"
+      },
+      "name": "installCWAgent",
+      "action": "aws:runDocument"
     }
+  ]
 }
-
-$report | Export-Csv -Path "EC2_90Day_Performance.csv" -NoTypeInformation
