@@ -1,31 +1,3 @@
-# 1. Define the updated Config (Ensures InstanceId is appended)
-$JSONConfig = @'
-{
-    "metrics": {
-        "append_dimensions": {
-            "InstanceId": "${aws:InstanceId}"
-        },
-        "metrics_collected": {
-            "LogicalDisk": {
-                "measurement": ["% Free Space"],
-                "resources": ["*"]
-            },
-            "Memory": {
-                "measurement": ["% Committed Bytes In Use"]
-            }
-        }
-    }
-}
-'@
-
-# 2. Send the command to all Windows Instances
-# This installs/updates the config and restarts the agent
-Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
-    -Parameter @{
-        "action" = "configure"
-        "mode"   = "ec2"
-        "optionalConfigurationSource" = "online"
-        "optionalConfigurationLocation" = $JSONConfig
-        "optionalRestart" = "yes"
-    } `
-    -Target @{ Key="tag:Platform"; Values="Windows" } # Or use Key="InstanceIds"; Values="*"
+2. collect EC2 instance type, Name, Number of EC2, CPU utilization (past 3 months), Memory utilization(past 3 months)
+3. collect EBS volume attached to each machine (EC2)
+    Volume ID, Volume Name , Type , Size , is it Root, % utilization
