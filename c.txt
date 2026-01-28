@@ -43,3 +43,7 @@
     }
   ]
 }
+
+
+# 3. Define the JSON config
+$CWConfig = '{"metrics":{"append_dimensions":{"InstanceId":"${aws:InstanceId}"},"metrics_collected":{"LogicalDisk":{"measurement":["% Free Space"],"resources":["*"]},"Memory":{"measurement":["% Committed Bytes In Use"]}}}}'
