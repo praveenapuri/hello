@@ -1,12 +1,63 @@
-Write-Host "Searching for all available Disk Metric Dimensions..." -ForegroundColor Cyan
+# Parameters
+$Region = "us-east-1" # Change to your region
+$Days = 90
+$EndTime = Get-Date
+$StartTime = $EndTime.AddDays(-$Days)
+$Period = 3600 # 1-hour resolution for 90 days data
 
-# Fetches all variations of how Disk Space is being reported
-$allMetrics = Get-CWMetricList -Namespace "CWAgent" -MetricName "LogicalDisk % Free Space"
+# Initialize results array
+$Results = @()
 
-$allMetrics | ForEach-Object {
-    $dims = $_.Dimensions
-    [PSCustomObject]@{
-        MetricName = $_.MetricName
-        Dimensions = ($dims | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join " | "
+# Get all running and stopped instances
+$Instances = Get-EC2Instance -Region $Region | Select-Object -ExpandProperty Reservations | Select-Object -ExpandProperty Instances
+
+foreach ($Instance in $Instances) {
+    $InstanceId = $Instance.InstanceId
+    $InstanceType = $Instance.InstanceType
+    $InstanceName = ($Instance.Tags | Where-Object { $_.Key -eq "Name" }).Value
+    
+    Write-Host "Processing Instance: $InstanceName ($InstanceId)..." -ForegroundColor Cyan
+
+    # 1. Get CPU Utilization (Default AWS Metric)
+    $CpuStats = Get-CWMetricStatistic -Region $Region `
+        -Namespace "AWS/EC2" `
+        -MetricName "CPUUtilization" `
+        -Dimension @{Name="InstanceId"; Value=$InstanceId} `
+        -StartTime $StartTime `
+        -EndTime $EndTime `
+        -Period $Period `
+        -Statistics "Average"
+
+    $AvgCpu = if ($CpuStats.Datapoints) { 
+        ($CpuStats.Datapoints | Measure-Object -Property Average -Average).Average 
+    } else { "N/A" }
+
+    # 2. Get Memory Utilization (Requires CloudWatch Agent)
+    # Note: Metric name is usually 'mem_used_percent' for Linux or 'Memory % Committed Bytes In Use' for Windows
+    $MemStats = Get-CWMetricStatistic -Region $Region `
+        -Namespace "CWAgent" `
+        -MetricName "mem_used_percent" `
+        -Dimension @{Name="InstanceId"; Value=$InstanceId} `
+        -StartTime $StartTime `
+        -EndTime $EndTime `
+        -Period $Period `
+        -Statistics "Average"
+
+    $AvgMem = if ($MemStats.Datapoints) { 
+        ($MemStats.Datapoints | Measure-Object -Property Average -Average).Average 
+    } else { "Agent Not Found" }
+
+    # Add to results
+    $Results += [PSCustomObject]@{
+        InstanceName      = $InstanceName
+        InstanceId        = $InstanceId
+        InstanceType      = $InstanceType
+        AvgCpuUtilPercent = if($AvgCpu -is [double]) { [math]::Round($AvgCpu, 2) } else { $AvgCpu }
+        AvgMemUtilPercent = if($AvgMem -is [double]) { [math]::Round($AvgMem, 2) } else { $AvgMem }
     }
-} | Out-GridView -Title "Search for your Instance IDs here"
+}
+
+# Output to Screen and Export to CSV
+$Results | Format-Table -AutoSize
+$Results | Export-Csv -Path "./EC2_Utilization_Report.csv" -NoTypeInformation
+Write-Host "Report exported to EC2_Utilization_Report.csv" -ForegroundColor Green
