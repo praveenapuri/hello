@@ -26,6 +26,9 @@ stages:
   - failed
   - success
 
+###############################################
+# ✅ TEST PIPELINE (FAILS NORMALLY)
+###############################################
 trigger_target_pipeline:
   stage: automationtests-at
   variables:
@@ -40,74 +43,41 @@ trigger_target_pipeline:
     strategy: depend
     forward:
       pipeline_variables: true
-  rules:     
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
 
-# APPROVE (only appears when test fails)
+###############################################
+# ✅ APPROVE / REJECT (ONLY USED ON FAILURE)
+###############################################
 approve_deploy:
   stage: approval
   needs: ["trigger_target_pipeline"]
   when: manual
-  rules:
-    - when: on_failure
+  allow_failure: false
   script:
-    - echo "Approved to continue deployment"
+    - echo "Approved - proceeding to deployment"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+      when: manual
+    - when: never
 
-# REJECT (also appears when test fails)
 reject_deploy:
   stage: approval
   needs: ["trigger_target_pipeline"]
   when: manual
-  rules:
-    - when: on_failure
+  allow_failure: false
   script:
     - echo "Deployment rejected"
-    - exit 1   # This FAILS the pipeline intentionally
+    - exit 1
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+      when: manual
+    - when: never
 
-trigger_dash_webui_service_pipeline:
-  stage: build-deploy-dash-webui-service-rt
-  variables:
-    DEV_AUTOMATED: true
-    #CI_PIPELINE_SOURCE: "schedule"
-    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
-    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
-    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-webui-service/"
-    HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-service"
-    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/h9ovNCBLTm2cjUc3fn9FjA/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becndashwebuiservicetrigger"
-    APP_NAME: "DashWebuiService"
-    APP_PROD_VERSION: $APP_VERSION_DASH_WEBUI_SERVICE
-  trigger:
-    project: 'bems/becn/visualize/becn-dash-webui-service'
-    branch: 'master'
-    strategy: depend
-    forward:
-      pipeline_variables: true
-  rules:     
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
-
-
-trigger_bulk_print_service_pipeline:
-  stage: build-deploy-bulk-print-service-rt
-  variables:
-    DEV_AUTOMATED: true
-    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
-    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
-    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
-    HARNESS_APP_NAME: "bemsd-becn-rt-becn-bulk-print-service"
-    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/pMQCCVSzQUiGGbjhjr8N-g/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becnbulkprintservicetrigger"
-    APP_NAME: "BulkPrintService"
-    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
-  trigger:
-    project: 'bems/becn/visualize/becn-bulk-print-service'
-    branch: 'master'
-    strategy: depend
-    forward:
-      pipeline_variables: true
-  rules:     
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
-
-###Staging and Prod Deployment trigger
-trigger_bulk_print_service_prod_pipeline:
+###############################################
+# ✅ AUTO DEPLOY (ONLY IF TEST PASSES)
+###############################################
+trigger_bulk_print_service_prod_pipeline_auto:
   stage: deploy-bulk-print-service-stg-prod
   needs: ["trigger_target_pipeline"]
   variables:
@@ -115,7 +85,6 @@ trigger_bulk_print_service_prod_pipeline:
     PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
     PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
     ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
-    #HARNESS_APP_NAME: "bemsd-becn-rt-becn-bulk-print-service"
     HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
     APP_NAME: "BulkPrintService"
     APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
@@ -125,6 +94,29 @@ trigger_bulk_print_service_prod_pipeline:
     strategy: depend
     forward:
       pipeline_variables: true
-  rules:   
-    - when: on_success   
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+      when: on_success
+
+###############################################
+# ✅ DEPLOY AFTER APPROVAL (ONLY IF FAILED)
+###############################################
+trigger_bulk_print_service_prod_pipeline_manual:
+  stage: deploy-bulk-print-service-stg-prod
+  needs: ["approve_deploy"]
+  variables:
+    DEV_AUTOMATED: true
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - when: manual
