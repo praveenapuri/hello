@@ -1,35 +1,36 @@
+include:
+  - project: artifacts/templates
+    file: sast-gitlab-ci.yml
+  - project: artifacts/templates
+    file: secret-detection-gitlab-ci.yml
+  - project: bems/secdevops/templates/security
+    file: dependency.yml
+  - project: bems/secdevops/templates/security
+    file: dast.yml
+  - project: bems/secdevops/templates/security
+    file: compliance.yml
+  - file: templates/automatedRebuildsTokenBECNUI.yml
+    project: bems/secdevops/gitlab-ops/automated-builds
+
 stages:
   - compliance
   - sast
   - dast
   - build-deploy-bulk-print-service-rt
-  # - build-deploy-egis-bdw-integration-service-rt
-  # - build-deploy-dash-data-quality-service-rt
-  # - build-deploy-dash-security-service-rt
-  # - build-deploy-dash-service-rt
-  # - build-deploy-dash-webui-service-rt
   - Deployment
   - automationtests-at
   - approval
-  - deploy-bulk-print-service-stg-prod
-  # - deploy-egis-bdw-integration-service-prod
-  # - deploy-dash-data-quality-service-stg-prod
-  # - deploy-dash-security-service-stg-prod
-  # - deploy-dash-service-stg-prod
-  # - deploy-dash-webui-service-stg-prod
-  - StgProdDeployment
-  - failedRetry
-  - failedRetry2
+  - deploy-stage
+  - deploy-prod
   - failed
   - success
 
-
-
 ###############################################
-# ✅ TEST PIPELINE (FAILS NORMALLY)
+# ✅ TEST PIPELINE (DO NOT BLOCK PIPELINE)
 ###############################################
 trigger_target_pipeline:
   stage: automationtests-at
+  allow_failure: true   # ✅ CRITICAL
   variables:
     RUN_STAGE: $RUN_STAGE
     STAGE_NAME: $STAGE_NAME
@@ -46,29 +47,93 @@ trigger_target_pipeline:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
 
 ###############################################
-# ✅ APPROVE / REJECT (ONLY USED ON FAILURE)
+# ✅ EMAIL NOTIFICATION (ONLY ON FAILURE)
+###############################################
+notify_failure:
+  stage: approval
+  needs: ["trigger_target_pipeline"]
+  rules:
+    - when: on_failure
+  script:
+    - echo "Test failed. Notify team."
+    - echo "Pipeline URL: $CI_PIPELINE_URL"
+
+###############################################
+# ✅ APPROVE (ONLY ON FAILURE)
 ###############################################
 approve_deploy:
   stage: approval
   needs: ["trigger_target_pipeline"]
   when: manual
-  allow_failure: false
   script:
-    - echo "Approved - proceeding to deployment"
+    - echo "CONFIRM APPROVAL (type YES)"
+    - read CONFIRM
+    - |
+      if [ "$CONFIRM" != "YES" ]; then
+        echo "Approval cancelled"
+        exit 1
+      fi
+    - echo "Approved. Proceeding..."
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
-      when: manual
-    - when: never
+    - when: on_failure
 
+###############################################
+# ✅ REJECT (ONLY ON FAILURE)
+###############################################
 reject_deploy:
   stage: approval
   needs: ["trigger_target_pipeline"]
   when: manual
-  allow_failure: false
   script:
     - echo "Deployment rejected"
     - exit 1
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
-      when: manual
-    - when: never
+    - when: on_failure
+
+###############################################
+# ✅ AUTO DEPLOY TO STAGE (ONLY IF TEST PASSES)
+###############################################
+deploy_stage_auto:
+  stage: deploy-stage
+  needs: ["trigger_target_pipeline"]
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: master
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  environment:
+    name: stage
+  rules:
+    - when: on_success
+
+###############################################
+# ✅ DEPLOY TO STAGE AFTER APPROVAL (FAIL CASE)
+###############################################
+deploy_stage_manual:
+  stage: deploy-stage
+  needs: ["approve_deploy"]
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: master
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  environment:
+    name: stage
+  rules:
+    - when: manual
+
+###############################################
+# ✅ PROD DEPLOYMENT (ALWAYS MANUAL + PROTECTED)
+###############################################
+deploy_prod:
+  stage: deploy-prod
+  needs:
+    - deploy_stage_auto
+    - deploy_stage_manual
+  script:
+    - echo "Deploying to PRODUCTION"
+  environment:
+    name: production
+  when: manual
