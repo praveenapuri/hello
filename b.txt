@@ -83,16 +83,31 @@ trigger_target_pipeline:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
 
-
-wait_for_approval:
-  stage: approval
+###############################################
+# ✅ Capture Test Status
+###############################################
+test_result:
+  stage: automationtests-at
   needs: ["trigger_target_pipeline"]
-  when: manual
-  allow_failure: false
   script:
-    - echo "Waiting for approval to proceed"
+    - echo "TEST_STATUS=success" >> result.env
+  artifacts:
+    reports:
+      dotenv: result.env
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+    - when: on_success
+
+test_result_failed:
+  stage: automationtests-at
+  needs: ["trigger_target_pipeline"]
+  script:
+    - echo "TEST_STATUS=failed" >> result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - when: on_failure
+
 
 ###############################################
 # ✅ APPROVE / REJECT (ONLY USED ON FAILURE)
@@ -110,9 +125,7 @@ approve_deploy:
         exit 1
       fi
     - echo "Approved. Proceeding..."
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
-      when: on_failure
+  allow_failure: false
 
 reject_deploy:
   stage: approval
@@ -121,9 +134,7 @@ reject_deploy:
   script:
     - echo "Deployment rejected"
     - exit 1
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
-      when: on_failure
+  allow_failure: false
 
 ###############################################
 # ✅ EMAIL NOTIFICATION (ONLY ON FAILURE)
@@ -133,28 +144,28 @@ approval_notification:
   image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
   needs: ["trigger_target_pipeline"]
   before_script:
-    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov//api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
-    - python3 --version
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
   script:
     - >
       python3 ./sendEmail.py
-      --sender "$EMAIL_FROM"
-      --recipient "$EMAIL_TO"
-      --cr "$CR_NUM"
-      --application "$APP_NAME"
-      --plannedstart "$START_TIME"
-      --plannedduration "$DURATION"
-      --start "$CI_PIPELINE_CREATED_AT"
-      --message "Automated tests failed. Manual approval required.\nReview pipeline: $CI_PIPELINE_URL"
+      -s "$EMAIL_FROM"
+      -r "$EMAIL_TO"
+      -c "$CR_NUM"
+      -a "$APP_NAME"
+      -ps "$START_TIME"
+      -pd "$DURATION"
+      -st "$CI_PIPELINE_CREATED_AT"
   rules:
-    - when: on_failure
+    - when: always
 
 ###############################################
 # ✅ AUTO DEPLOY (ONLY IF TEST PASSES)
 ###############################################
 trigger_bulk_print_service_prod_pipeline_auto:
   stage: deploy-bulk-print-service-stg-prod
-  needs: ["trigger_target_pipeline"]
+  needs: 
+    - trigger_target_pipeline
+    - test_result
   variables:
     DEV_AUTOMATED: true
     PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
@@ -170,8 +181,7 @@ trigger_bulk_print_service_prod_pipeline_auto:
     forward:
       pipeline_variables: true
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
-      when: on_success
+    - if: '$TEST_STATUS == "success"'
 
 ###############################################
 # ✅ DEPLOY AFTER APPROVAL (ONLY IF FAILED)
