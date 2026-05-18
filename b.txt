@@ -1,30 +1,29 @@
-include:
-  - project: artifacts/templates
-    file: sast-gitlab-ci.yml
-  - project: artifacts/templates
-    file: secret-detection-gitlab-ci.yml
-  - project: bems/secdevops/templates/security
-    file: dependency.yml
-  - project: bems/secdevops/templates/security
-    file: dast.yml
-  - project: bems/secdevops/templates/security
-    file: compliance.yml
-  - file: templates/automatedRebuildsTokenBECNUI.yml
-    project: bems/secdevops/gitlab-ops/automated-builds
-
 stages:
   - compliance
   - sast
   - dast
   - build-deploy-bulk-print-service-rt
+  # - build-deploy-egis-bdw-integration-service-rt
+  # - build-deploy-dash-data-quality-service-rt
+  # - build-deploy-dash-security-service-rt
+  # - build-deploy-dash-service-rt
+  # - build-deploy-dash-webui-service-rt
   - Deployment
   - automationtests-at
   - approval
   - deploy-bulk-print-service-stg-prod
+  # - deploy-egis-bdw-integration-service-prod
+  # - deploy-dash-data-quality-service-stg-prod
+  # - deploy-dash-security-service-stg-prod
+  # - deploy-dash-service-stg-prod
+  # - deploy-dash-webui-service-stg-prod
+  - StgProdDeployment
   - failedRetry
   - failedRetry2
   - failed
   - success
+
+
 
 ###############################################
 # ✅ TEST PIPELINE (FAILS NORMALLY)
@@ -73,50 +72,3 @@ reject_deploy:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
       when: manual
     - when: never
-
-###############################################
-# ✅ AUTO DEPLOY (ONLY IF TEST PASSES)
-###############################################
-trigger_bulk_print_service_prod_pipeline_auto:
-  stage: deploy-bulk-print-service-stg-prod
-  needs: ["trigger_target_pipeline"]
-  variables:
-    DEV_AUTOMATED: true
-    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
-    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
-    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
-    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
-    APP_NAME: "BulkPrintService"
-    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
-  trigger:
-    project: 'bems/becn/visualize/becn-bulk-print-service'
-    branch: 'master'
-    strategy: depend
-    forward:
-      pipeline_variables: true
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
-      when: on_success
-
-###############################################
-# ✅ DEPLOY AFTER APPROVAL (ONLY IF FAILED)
-###############################################
-trigger_bulk_print_service_prod_pipeline_manual:
-  stage: deploy-bulk-print-service-stg-prod
-  needs: ["approve_deploy"]
-  variables:
-    DEV_AUTOMATED: true
-    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
-    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
-    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
-    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
-    APP_NAME: "BulkPrintService"
-    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
-  trigger:
-    project: 'bems/becn/visualize/becn-bulk-print-service'
-    branch: 'master'
-    strategy: depend
-    forward:
-      pipeline_variables: true
-  rules:
-    - when: manual
