@@ -16,3 +16,30 @@ approval_notification:
       -st "$CI_PIPELINE_CREATED_AT"
   rules:
     - when: always
+
+
+test_result:
+  stage: automationtests-at
+  needs: ["trigger_target_pipeline"]
+  script:
+    - echo "TEST_STATUS=success" >> result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - when: on_success
+
+test_result_failed:
+  stage: automationtests-at
+  needs: ["trigger_target_pipeline"]
+  script:
+    - echo "TEST_STATUS=failed" >> result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - when: on_failure
+
+
+
+
