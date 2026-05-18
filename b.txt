@@ -1,3 +1,17 @@
+Success job:
+  stage: success
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  before_script:
+    -  'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov//api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
+    - python3 --version
+  script:
+    - 'python3 ./sendEmail.py --sender $EMAIL_FROM --recipient $EMAIL_TO --cr $CR_NUM --application $APP_NAME --plannedstart $START_TIME --plannedduration $DURATION --start $CI_PIPELINE_CREATED_AT'
+  when: on_success
+  rules: 
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+
+
 include:
   - project: artifacts/templates
     file: sast-gitlab-ci.yml
