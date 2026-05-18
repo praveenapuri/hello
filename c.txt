@@ -1,63 +1,10 @@
-{
-  "schemaVersion": "2.2",
-  "description": "A composite document for updating and configuring the CloudWatch agent with specific disk and memory metrics.",
-  "mainSteps": [
-    {
-      "inputs": {
-        "runCommand": [
-          "sleep 1800"
-        ]
-      },
-      "name": "first",
-      "action": "aws:runShellScript",
-      "precondition": {
-        "StringEquals": [
-          "platformType",
-          "Linux"
-        ]
-      }
-    },
-    {
-      "inputs": {
-        "runCommand": [
-          "Start-Sleep -Seconds 1800"
-        ]
-      },
-      "name": "second",
-      "action": "aws:runPowerShellScript",
-      "precondition": {
-        "StringEquals": [
-          "platformType",
-          "Windows"
-        ]
-      }
-    },
-    {
-      "inputs": {
-        "documentParameters": "{\"action\":\"Install\",\"name\" : \"AmazonCloudWatchAgent\"}",
-        "documentType": "SSMDocument",
-        "documentPath": "AWS-ConfigureAWSPackage"
-      },
-      "name": "installCWAgent",
-      "action": "aws:runDocument"
-    },
-    {
-      "inputs": {
-        "runCommand": [
-          "$CWConfig = '{\"metrics\":{\"append_dimensions\":{\"InstanceId\":\"${aws:InstanceId}\"},\"metrics_collected\":{\"LogicalDisk\":{\"measurement\":[\"% Free Space\"],\"resources\":[\"*\"]},\"Memory\":{\"measurement\":[\"% Committed Bytes In Use\"]}}}}'",
-          "$ConfigPath = if ($IsWindows) { \"$env:ProgramFiles\\Amazon\\AmazonCloudWatchAgent\\config.json\" } else { \"/opt/aws/amazon-cloudwatch-agent/bin/config.json\" }",
-          "$CWConfig | Out-File -FilePath $ConfigPath -Encoding utf8",
-          "& \"$env:ProgramFiles\\Amazon\\AmazonCloudWatchAgent\\amazon-cloudwatch-agent-ctl.ps1\" -a append-config -m ec2 -c file:$ConfigPath -s"
-        ]
-      },
-      "name": "configureCWAgent",
-      "action": "aws:runPowerShellScript",
-      "precondition": {
-        "StringEquals": [
-          "platformType",
-          "Windows"
-        ]
-      }
-    }
-  ]
-}
+$ curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov//api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py
+$ python3 --version
+Python 3.11.13
+$ python3 ./sendEmail.py --sender "$EMAIL_FROM" --recipient "$EMAIL_TO" --cr "$CR_NUM" --application "$APP_NAME" --plannedstart "$START_TIME" --plannedduration "$DURATION" --start "$CI_PIPELINE_CREATED_AT" --message "Automated tests failed. Manual approval required.\nReview pipeline: $CI_PIPELINE_URL"
+usage: sendEmail.py [-h] -s SENDER -r RECIPIENT -c CR [-a APPLICATION] -ps
+                    PLANNEDSTART -pd PLANNEDDURATION [-st START]
+sendEmail.py: error: unrecognized arguments: --message Automated tests failed. Manual approval required.\nReview pipeline: https://gitlab.cbp.dhs.gov/bems/becn/visualize/becn-dash-webui/-/pipelines/6571082
+Cleaning up project directory and file based variables
+00:00
+ERROR: Job failed: command terminated with exit code 1
