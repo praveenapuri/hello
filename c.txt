@@ -1,10 +1,18 @@
-$ curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov//api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py
-$ python3 --version
-Python 3.11.13
-$ python3 ./sendEmail.py --sender "$EMAIL_FROM" --recipient "$EMAIL_TO" --cr "$CR_NUM" --application "$APP_NAME" --plannedstart "$START_TIME" --plannedduration "$DURATION" --start "$CI_PIPELINE_CREATED_AT" --message "Automated tests failed. Manual approval required.\nReview pipeline: $CI_PIPELINE_URL"
-usage: sendEmail.py [-h] -s SENDER -r RECIPIENT -c CR [-a APPLICATION] -ps
-                    PLANNEDSTART -pd PLANNEDDURATION [-st START]
-sendEmail.py: error: unrecognized arguments: --message Automated tests failed. Manual approval required.\nReview pipeline: https://gitlab.cbp.dhs.gov/bems/becn/visualize/becn-dash-webui/-/pipelines/6571082
-Cleaning up project directory and file based variables
-00:00
-ERROR: Job failed: command terminated with exit code 1
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: ["trigger_target_pipeline"]
+  before_script:
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
+  script:
+    - >
+      python3 ./sendEmail.py
+      -s "$EMAIL_FROM"
+      -r "$EMAIL_TO"
+      -c "$CR_NUM"
+      -a "$APP_NAME"
+      -ps "$START_TIME"
+      -pd "$DURATION"
+      -st "$CI_PIPELINE_CREATED_AT"
+  rules:
+    - when: always
