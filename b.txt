@@ -83,6 +83,17 @@ trigger_target_pipeline:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
 
+
+wait_for_approval:
+  stage: approval
+  needs: ["trigger_target_pipeline"]
+  when: manual
+  allow_failure: false
+  script:
+    - echo "Waiting for approval to proceed"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+
 ###############################################
 # ✅ APPROVE / REJECT (ONLY USED ON FAILURE)
 ###############################################
