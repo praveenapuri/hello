@@ -1,49 +1,13 @@
-###############################################
-# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
-###############################################
-approval_notification:
-  stage: approval
-  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
-  needs: 
-    - job: test_status_collector
-      artifacts: true
-  script:
-    - |
-      if [ "$TEST_OUTCOME" = "failure" ]; then
-        echo "Automated tests failed. Dispatching robust inline Python alert..."
-        
-        python3 -c "
-      import smtplib
-      from email.mime.text import MIMEText
-
-      # Construct the clear text notification body
-      body = '''Attention Team,
-
-      The automated test suite for $APP_NAME has completed with a FAILURE status.
-
-      As per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.
-
-      ACTION REQUIRED:
-      Please log in to GitLab, review the test evaluation logs, and explicitly handle the manual approval button to determine if production deployment should proceed.
-
-      Pipeline Reference: $CI_PIPELINE_URL
-      Change Request Number: $CR_NUM'''
-
-      msg = MIMEText(body)
-      msg['Subject'] = '⚠️ ALERT: $APP_NAME Deployment Paused at Approval Gate'
-      msg['From'] = '$EMAIL_FROM'
-      msg['To'] = '$EMAIL_TO'
-
-      try:
-          # Connects directly to the internal relay port without needing OS binaries
-          with smtplib.SMTP('mail.cbp.dhs.gov', 25) as server:
-              server.send_message(msg)
-          print('Alert email successfully dispatched to relay.')
-      except Exception as e:
-          print(f'Failed to send email via relay: {e}')
-      "
-      else:
-        echo "Automated tests passed successfully. Bypassing email alert."
-      fi
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+Initialized empty Git repository in /builds/bems/becn/visualize/becn-dash-webui/.git/
+Created fresh repository.
+Checking out 7375904f as detached HEAD (ref is manual_approval_deploy)...
+Skipping Git submodules setup
+Executing "step_script" stage of the job script
+00:02
+$ if [ "$TEST_OUTCOME" = "failure" ]; then # collapsed multi-line command
+Automated tests failed. Dispatching robust inline Python alert...
+Failed to send email via relay: [Errno -2] Name or service not known
+/scripts-14347-20344633/step_script: line 279: else:: command not found
+Cleaning up project directory and file based variables
+00:00
+ERROR: Job failed: command terminated with exit code 1
