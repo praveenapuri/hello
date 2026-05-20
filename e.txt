@@ -1,49 +1,234 @@
-The service returned an error with Error Code InvalidDocument and HTTP Body: {"__type":"InvalidDocument"}
+variables:
+  DAST_WEBSITE: "https://becn-viz-portal-webui-sit.dev.istio.cbp.dhs.gov/"
+  REBUILD_TOKEN: $REBUILD_TOKEN
+  PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui%2Fprod%2Fkustomization.yaml/raw?ref=master"
+  PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+  ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-webui/"
+  artifactoryToken: $ARTIFACTORY_TOKEN
+  HARNESS_TOKEN: $HARNESS_REBUILD
+  HARNESS_AGENT: "org.bemsd"
+  HARNESS_APP_NAME: bemsd-becn-rt-becn-dash-webui
+  HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/bwBm_xg-QeWFV0leQdmq0Q/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=BECNAUTOMATEDWEBUIPIPELINES&triggerIdentifier=becndashwebuiautotrigger"
+  DEV_AUTOMATED: $DEV_AUTOMATED
+  EMAIL_FROM: "BEMSDTIDDevelopmentTeam@cbp.dhs.gov"
+  EMAIL_TO: $EMAIL_TO
+  CR_NUM: "NA"
+  APP_NAME: "DashWebui"
+  START_TIME: "14:00"
+  DURATION: "120"
+  APP_WEBUI_VERSION: $APP_VERSION_DASH_WEBUI
+  HARNESS_TRIGGER_URL_STGPROD: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/ge5qEsG3QQ-qXfigFXJBSQ/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDWEBUISTGPROD&triggerIdentifier=becndashwebuiprodtrigger"
 
-# 1. Exclusion List
-$ExcludeList = @("i-0abcdef1234567890", "i-0123456789abcdefg") 
+include:
+  - project: artifacts/templates
+    file: sast-gitlab-ci.yml
+  - project: artifacts/templates
+    file: secret-detection-gitlab-ci.yml
+  - project: bems/secdevops/templates/security
+    file: dependency.yml
+  - project: bems/secdevops/templates/security
+    file: dast.yml
+  - project: bems/secdevops/templates/security
+    file: compliance.yml
+  - file: templates/automatedRebuildsTokenBECNUI.yml
+    project: bems/secdevops/gitlab-ops/automated-builds
 
-# 2. Get Targets
-$targetInstances = (Get-SSMInstanceInformation).InstanceId | Where-Object { $_ -notin $ExcludeList }
+stages:
+  - compliance
+  - sast
+  - dast
+  - build-deploy-bulk-print-service-rt
+  - Deployment
+  - automationtests-at
+  - test-evaluation       
+  - approval
+  - deploy-bulk-print-service-stg-prod
+  - StgProdDeployment
+  - failedRetry
+  - failedRetry2
+  - failed
+  - success
 
-# 3. The JSON Config (Strictly formatted)
-$CWConfig = @'
-{
-    "metrics": {
-        "append_dimensions": {
-            "InstanceId": "${aws:InstanceId}"
-        },
-        "metrics_collected": {
-            "LogicalDisk": {
-                "measurement": ["% Free Space"],
-                "resources": ["*"]
-            },
-            "Memory": {
-                "measurement": ["% Committed Bytes In Use"]
-            }
-        }
-    }
-}
-'@
+###############################################
+# TEST PIPELINE
+###############################################
+trigger_target_pipeline:
+  stage: automationtests-at
+  allow_failure: true
+  variables:
+    RUN_STAGE: $RUN_STAGE
+    STAGE_NAME: $STAGE_NAME
+    SERENITY_ENV: $SERENITY_ENV
+    CUCUMBER_TAGS: $CUCUMBER_TAGS
+    CI_COMMIT_TAG: $CI_COMMIT_TAG
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-webui-at'
+    branch: $CI_COMMIT_TAG
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
 
-# 4. Define Parameters strictly for the SSM Document
-$params = @{
-    "action"                        = @("configure")
-    "mode"                          = @("ec2")
-    "optionalConfigurationSource"   = @("online")
-    "optionalConfigurationLocation" = @($CWConfig)
-    "optionalRestart"               = @("yes")
-}
+###############################################
+# Test Status Collector
+###############################################
+test_status_collector:
+  stage: test-evaluation
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  script:
+    - echo "Fetching status of the triggered pipeline bridge job..."
+    - |
+      cat << 'EOF' > parse_status.py
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          if isinstance(data, list):
+              status = next((job['status'] for job in data if isinstance(job, dict) and job.get('name') == 'trigger_target_pipeline'), 'failed')
+              print(status)
+          else:
+              print('failed')
+      except Exception:
+          print('failed')
+      EOF
+    - >
+      TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" 
+      "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges" 
+      | python3 parse_status.py | tr -d '\n\r ')
+    - echo "Downstream test pipeline finished with status -> [${TRIGGER_STATUS}]"
+    - |
+      if [ "$TRIGGER_STATUS" = "success" ]; then
+        echo "TEST_OUTCOME=success" > result.env
+      else
+        echo "TEST_OUTCOME=failure" > result.env
+      fi
+    - cat result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: always
 
-# 5. Send Command
-try {
-    Send-SSMCommand -DocumentName "AmazonCloudWatch-ManageAgent" `
-        -InstanceId $targetInstances `
-        -Parameter $params -ErrorAction Stop
-    Write-Host "Command sent successfully to $($targetInstances.Count) instances." -ForegroundColor Green
-}
-catch {
-    Write-Host "Failed to send command: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "Checking if document 'AmazonCloudWatch-ManageAgent' exists..." -ForegroundColor Yellow
-    Get-SSMDocument -Name "AmazonCloudWatch-ManageAgent" | Select-Object Name, DocumentVersion
-}
+###############################################
+# EMAIL NOTIFICATION
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+  before_script:
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        python3 ./sendEmail.py -s "$EMAIL_FROM" -r "$EMAIL_TO" -c "$CR_NUM" -a "$APP_NAME" -ps "$START_TIME" -pd "$DURATION" -st "$CI_PIPELINE_CREATED_AT"
+      else
+        echo "Tests passed. Skipping email."
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+
+###############################################
+# GATEWAY ACTION: PAUSES ONLY ON TEST FAILURE
+###############################################
+gate_and_approval_hold:
+  stage: approval
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+  script:
+    - echo "Manual approval action captured successfully. Releasing deployment sequence..."
+  rules:
+    # Path A: If tests pass, bypass human gate automatically
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true" && $TEST_OUTCOME == "success"'
+      when: on_success
+    # Path B: If tests fail, drop an interactive play button right here to halt everything
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true" && $TEST_OUTCOME == "failure"'
+      when: manual
+      allow_failure: false
+
+###############################################
+# CONSOLIDATED SINGLE DOWNSTREAM DEPLOYMENT TRIGGER
+###############################################
+trigger_bulk_print_service_prod_pipeline:
+  stage: deploy-bulk-print-service-stg-prod
+  needs:
+    - job: gate_and_approval_hold
+  variables:
+    DEV_AUTOMATED: "true"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+
+###############################################
+# STAGING / PRODUCTION RUNTIME DEPLOYMENT
+###############################################
+StgProdDeployment:
+  stage: StgProdDeployment
+  needs:
+    - job: trigger_bulk_print_service_prod_pipeline
+  script:
+    - echo "Downstream deployment complete. Finalizing StgProdDeployment stage..."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: on_success
+
+###############################################
+# TERMINATING STATUS STAGES
+###############################################
+failedRetry:
+  stage: failedRetry
+  needs:
+    - job: StgProdDeployment
+  script:
+    - echo "Executing failedRetry..."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: on_failure
+
+failedRetry2:
+  stage: failedRetry2
+  needs:
+    - job: failedRetry
+  script:
+    - echo "Executing failedRetry2..."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: on_failure
+
+failed:
+  stage: failed
+  needs:
+    - job: StgProdDeployment
+      optional: true
+    - job: failedRetry2
+      optional: true
+  script:
+    - echo "Pipeline failed template tracking."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: on_failure
+
+success:
+  stage: success
+  needs:
+    - job: StgProdDeployment
+  script:
+    - echo "Pipeline completed successfully!"
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: on_success
