@@ -1,34 +1,4 @@
-###############################################
-# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
-###############################################
-approval_notification:
-  stage: approval
-  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
-  needs: 
-    - job: test_status_collector
-      artifacts: true
-  before_script:
-    # Fetches the standard core python mailer utility from your centralized repository
-    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
-  script:
-    - |
-      if [ "$TEST_OUTCOME" = "failure" ]; then
-        echo "Automated tests failed. Dispatching pause and manual approval alert email..."
-        
-        # Constructs the notification payload detailing the manual hold state
-        CUSTOM_BODY="Attention Team,\n\nThe automated test suite for $APP_NAME has completed with a FAILURE status.\n\nAs per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.\n\nACTION REQUIRED:\nPlease log in to GitLab, review the test evaluation logs, and explicitly 'Approve' or 'Reject' this execution to determine if production deployment should proceed.\n\nPipeline Reference: $CI_PIPELINE_URL"
-        
-        python3 ./sendEmail.py \
-          -s "$EMAIL_FROM" \
-          -r "$EMAIL_TO" \
-          -c "$CR_NUM" \
-          -a "$APP_NAME" \
-          -ps "$START_TIME" \
-          -pd "$DURATION" \
-          -st "$CI_PIPELINE_CREATED_AT" \
-          -b "$CUSTOM_BODY"
-      else
-        echo "Automated tests passed successfully. Bypassing email alert."
-      fi
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+Automated tests failed. Dispatching pause and manual approval alert email...
+usage: sendEmail.py [-h] -s SENDER -r RECIPIENT -c CR [-a APPLICATION] -ps
+                    PLANNEDSTART -pd PLANNEDDURATION [-st START]
+sendEmail.py: error: unrecognized arguments: -b Attention Team,\n\nThe automated test suite for DashWebui has completed with a FAILURE status.\n\nAs per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.\n\nACTION REQUIRED:\nPlease log in to GitLab, review the test evaluation logs, and explicitly 'Approve' or 'Reject' this execution to determine if production deployment should proceed.\n\nPipeline Reference: https://gitlab.cbp.dhs.gov/bems/becn/visualize/becn-dash-webui/-/pipelines/6585718
