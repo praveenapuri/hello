@@ -1,38 +1,4 @@
-###############################################
-# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
-###############################################
-approval_notification:
-  stage: approval
-  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
-  needs: 
-    - job: test_status_collector
-      artifacts: true
-  before_script:
-    # 1. Fetch your official working email failure script
-    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailFailure.py/raw?ref=master -o sendEmailFailure.py'
-  script:
-    - |
-      if [ "$TEST_OUTCOME" = "failure" ]; then
-        echo "Automated tests failed. Patching template variables and dispatching alert..."
-        
-        # 2. Build our explicit manual approval notification text
-        CUSTOM_ALERT="Attention Team,\n\nThe automated test suite for $APP_NAME has completed with a FAILURE status.\n\nAs per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.\n\nACTION REQUIRED:\nPlease log in to GitLab, review the test evaluation logs, and explicitly handle the manual 'gate_and_approval_hold' button to determine if production deployment should proceed.\n\nPipeline Reference: $CI_PIPELINE_URL"
-        
-        # 3. Use sed to inject our custom message directly into the script's core message body variable,
-        # bypassing the broken line 88 concatenation entirely.
-        sed -i "s/msg.set_content(.*/msg.set_content(\"\"\"$CUSTOM_ALERT\"\"\")/g" sendEmailFailure.py
-        
-        # 4. Execute the patched script using your standard, validated production parameters
-        python3 ./sendEmailFailure.py \
-          -s "$EMAIL_FROM" \
-          -r "$EMAIL_TO" \
-          -c "$CR_NUM" \
-          -a "$APP_NAME" \
-          -ps "$START_TIME" \
-          -pd "$DURATION" \
-          -st "$CI_PIPELINE_CREATED_AT"
-      else
-        echo "Automated tests passed successfully. Bypassing email alert."
-      fi
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+sed: -e expression #1, char 471: unknown option to `s'
+Cleaning up project directory and file based variables
+00:01
+ERROR: Job failed: command terminated with exit code 1
