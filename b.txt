@@ -122,20 +122,14 @@ approval_notification:
   before_script:
     - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
   script:
-    - >
-      python3 ./sendEmail.py
-      -s "$EMAIL_FROM"
-      -r "$EMAIL_TO"
-      -c "$CR_NUM"
-      -a "$APP_NAME"
-      -ps "$START_TIME"
-      -pd "$DURATION"
-      -st "$CI_PIPELINE_CREATED_AT"
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        python3 ./sendEmail.py -s "$EMAIL_FROM" -r "$EMAIL_TO" -c "$CR_NUM" -a "$APP_NAME" -ps "$START_TIME" -pd "$DURATION" -st "$CI_PIPELINE_CREATED_AT"
+      else
+        echo "Tests passed. Skipping email notification."
+      fi
   rules:
-    - if: '$TEST_OUTCOME == "failure"'
-      when: on_success
-    - if: '$TEST_OUTCOME == "success"'
-      when: never
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
 
 ###############################################
 # APPROVE / REJECT (ONLY USED ON FAILURE)
@@ -146,13 +140,16 @@ approve_deploy:
     - job: test_status_collector
       artifacts: true
   script:
-    - echo "Deployment manually approved by operator. Proceeding to production deployment..."
+    - |
+      if [ "$TEST_OUTCOME" = "success" ]; then
+        echo "Tests passed automatically. Manual approval not required."
+        exit 0
+      fi
+    - echo "Manual action triggered. Proceeding..."
   rules:
-    - if: '$TEST_OUTCOME == "failure"'
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
       when: manual
-      allow_failure: false
-    - if: '$TEST_OUTCOME == "success"'
-      when: never
+      allow_failure: true  # Setting to true keeps the pipeline green/visible if skipped
 
 reject_deploy:
   stage: approval
@@ -160,18 +157,23 @@ reject_deploy:
     - job: test_status_collector
       artifacts: true
   script:
+    - |
+      if [ "$TEST_OUTCOME" = "success" ]; then
+        echo "Tests passed automatically. Reject option skipped."
+        exit 0
+      fi
     - echo "Deployment explicitly rejected by operator. Halting pipeline."
     - exit 1
   rules:
-    - if: '$TEST_OUTCOME == "failure"'
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
       when: manual
-      allow_failure: false
-    - if: '$TEST_OUTCOME == "success"'
-      when: never
+      allow_failure: true
 
 ###############################################
 # AUTO DEPLOY (ONLY IF TEST PASSES)
 ###############################################
+# Note: Because trigger/bridge jobs cannot run inline script blocks to perform shell checks,
+# we control its execution via an explicit 'needs' mapping to the status collector.
 trigger_bulk_print_service_prod_pipeline_auto:
   stage: deploy-bulk-print-service-stg-prod
   needs: 
@@ -195,18 +197,15 @@ trigger_bulk_print_service_prod_pipeline_auto:
     - if: '$TEST_OUTCOME == "success"'
       when: on_success
     - if: '$TEST_OUTCOME == "failure"'
-      when: never
+      when: never  # Bridge jobs must retain this to prevent empty downstream execution crashes
 
 ###############################################
 # DEPLOY AFTER APPROVAL (ONLY IF FAILED)
 ###############################################
 trigger_bulk_print_service_prod_pipeline_manual:
   stage: deploy-bulk-print-service-stg-prod
-  # FIX: Using 'optional: true' establishes the graph connection to the manual button 
-  # without causing linter errors if the manual button is skipped at runtime.
   needs:
     - job: approve_deploy
-      optional: true
   variables:
     DEV_AUTOMATED: "true"
     PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
@@ -222,7 +221,4 @@ trigger_bulk_print_service_prod_pipeline_manual:
     forward:
       pipeline_variables: true
   rules:
-    - if: '$TEST_OUTCOME == "failure"'
-      when: on_success
-    - if: '$TEST_OUTCOME == "success"'
-      when: never
+    - when: on_success
