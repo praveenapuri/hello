@@ -40,7 +40,7 @@ stages:
   - build-deploy-bulk-print-service-rt
   - Deployment
   - automationtests-at
-  - test-evaluation       # Dedicated sequential stage forces evaluation to run unconditionally
+  - test-evaluation       # Keeps evaluation decoupled from trigger job failures
   - approval
   - deploy-bulk-print-service-stg-prod
   - StgProdDeployment
@@ -76,7 +76,6 @@ trigger_target_pipeline:
 test_status_collector:
   stage: test-evaluation
   image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
-  # Removed 'needs' to bypass the failure skipping mechanism. Sequential stages handle the timing.
   script:
     - echo "Fetching status of the triggered pipeline bridge job..."
     - |
@@ -136,7 +135,7 @@ approval_notification:
     - if: '$TEST_OUTCOME == "failure"'
       when: on_success
     - if: '$TEST_OUTCOME == "success"'
-      when: never
+      when: never  # Forces job to gray out elegantly if tests pass
 
 ###############################################
 # APPROVE / REJECT (ONLY USED ON FAILURE)
@@ -153,7 +152,7 @@ approve_deploy:
       when: manual
       allow_failure: false
     - if: '$TEST_OUTCOME == "success"'
-      when: never
+      when: never  # Forces job to gray out elegantly if tests pass
 
 reject_deploy:
   stage: approval
@@ -168,7 +167,7 @@ reject_deploy:
       when: manual
       allow_failure: false
     - if: '$TEST_OUTCOME == "success"'
-      when: never
+      when: never  # Forces job to gray out elegantly if tests pass
 
 ###############################################
 # AUTO DEPLOY (ONLY IF TEST PASSES)
@@ -196,7 +195,7 @@ trigger_bulk_print_service_prod_pipeline_auto:
     - if: '$TEST_OUTCOME == "success"'
       when: on_success
     - if: '$TEST_OUTCOME == "failure"'
-      when: never
+      when: never  # Forces job to gray out elegantly if tests fail
 
 ###############################################
 # DEPLOY AFTER APPROVAL (ONLY IF FAILED)
