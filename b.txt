@@ -1,3 +1,91 @@
+variables:
+  DAST_WEBSITE: "https://becn-viz-portal-webui-sit.dev.istio.cbp.dhs.gov/"
+  REBUILD_TOKEN: $REBUILD_TOKEN
+  PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui%2Fprod%2Fkustomization.yaml/raw?ref=master"
+  PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+  ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-webui/"
+  artifactoryToken: $ARTIFACTORY_TOKEN
+  HARNESS_TOKEN: $HARNESS_REBUILD
+  HARNESS_AGENT: "org.bemsd"
+  HARNESS_APP_NAME: bemsd-becn-rt-becn-dash-webui
+  HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/bwBm_xg-QeWFV0leQdmq0Q/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=BECNAUTOMATEDWEBUIPIPELINES&triggerIdentifier=becndashwebuiautotrigger"
+  DEV_AUTOMATED: $DEV_AUTOMATED
+  EMAIL_FROM: "BEMSDTIDDevelopmentTeam@cbp.dhs.gov"
+  EMAIL_TO: $EMAIL_TO
+  CR_NUM: "NA"
+  APP_NAME: "DashWebui"
+  START_TIME: "14:00"
+  DURATION: "120"
+  APP_WEBUI_VERSION: $APP_VERSION_DASH_WEBUI
+ 
+  HARNESS_TRIGGER_URL_STGPROD: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/ge5qEsG3QQ-qXfigFXJBSQ/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDWEBUISTGPROD&triggerIdentifier=becndashwebuiprodtrigger"
+
+include:
+  - project: artifacts/templates
+    file: sast-gitlab-ci.yml
+  - project: artifacts/templates
+    file: secret-detection-gitlab-ci.yml
+  - project: bems/secdevops/templates/security
+    file: dependency.yml
+  - project: bems/secdevops/templates/security
+    file: dast.yml
+  - project: bems/secdevops/templates/security
+    file: compliance.yml
+  - file: templates/automatedRebuildsTokenBECNUI.yml
+    project: bems/secdevops/gitlab-ops/automated-builds
+
+
+stages:
+  - compliance
+  - sast
+  - dast
+  - build-deploy-bulk-print-service-rt
+  # - build-deploy-egis-bdw-integration-service-rt
+  # - build-deploy-dash-data-quality-service-rt
+  # - build-deploy-dash-security-service-rt
+  # - build-deploy-dash-service-rt
+  # - build-deploy-dash-webui-service-rt
+  - Deployment
+  - automationtests-at
+  - approval
+  - deploy-bulk-print-service-stg-prod
+  # - deploy-egis-bdw-integration-service-prod
+  # - deploy-dash-data-quality-service-stg-prod
+  # - deploy-dash-security-service-stg-prod
+  # - deploy-dash-service-stg-prod
+  # - deploy-dash-webui-service-stg-prod
+  - StgProdDeployment
+  - failedRetry
+  - failedRetry2
+  - failed
+  - success
+
+
+
+###############################################
+# TEST PIPELINE (FAILS NORMALLY)
+###############################################
+trigger_target_pipeline:
+  stage: automationtests-at
+  allow_failure: true
+  variables:
+    RUN_STAGE: $RUN_STAGE
+    STAGE_NAME: $STAGE_NAME
+    SERENITY_ENV: $SERENITY_ENV
+    CUCUMBER_TAGS: $CUCUMBER_TAGS
+    CI_COMMIT_TAG: $CI_COMMIT_TAG
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-webui-at'
+    branch: $CI_COMMIT_TAG
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+
+###############################################
+# Test Status
+###############################################
 test_status_collector:
   stage: automationtests-at
   needs:
@@ -17,3 +105,117 @@ test_status_collector:
     reports:
       dotenv: result.env
   when: always
+
+###############################################
+#  EMAIL NOTIFICATION (ONLY ON FAILURE)
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - trigger_target_pipeline
+    - test_status_collector
+  before_script:
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
+  script:
+    - >
+      python3 ./sendEmail.py
+      -s "$EMAIL_FROM"
+      -r "$EMAIL_TO"
+      -c "$CR_NUM"
+      -a "$APP_NAME"
+      -ps "$START_TIME"
+      -pd "$DURATION"
+      -st "$CI_PIPELINE_CREATED_AT"
+  rules:
+    - if: '$TEST_OUTCOME == "failure"'
+    - when: never
+
+###############################################
+# APPROVE / REJECT (ONLY USED ON FAILURE)
+###############################################
+approve_deploy:
+  stage: approval
+  needs: 
+    - trigger_target_pipeline
+    - test_status_collector
+  when: manual
+  script:
+    - echo "CONFIRM APPROVAL (type YES)"
+    - read CONFIRM
+    - |
+      if [ "$CONFIRM" != "YES" ]; then
+        echo "Approval cancelled"
+        exit 1
+      fi
+    - echo "Approved. Proceeding..."
+  allow_failure: false
+  rules:
+    - if: '$TEST_OUTCOME == "failure"'
+    - when: never
+
+reject_deploy:
+  stage: approval
+  needs:
+    - trigger_target_pipeline
+    - test_status_collector
+  when: manual
+  script:
+    - echo "Deployment rejected"
+    - exit 1
+  allow_failure: false
+  rules:
+    - if: '$TEST_OUTCOME == "failure"'
+    - when: never
+
+
+###############################################
+# AUTO DEPLOY (ONLY IF TEST PASSES)
+###############################################
+trigger_bulk_print_service_prod_pipeline_auto:
+  stage: deploy-bulk-print-service-stg-prod
+  needs: 
+    - trigger_target_pipeline
+    - test_status_collector
+
+  variables:
+    DEV_AUTOMATED: true
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - if: '$TEST_OUTCOME == "success"'
+    - when: never
+
+###############################################
+# DEPLOY AFTER APPROVAL (ONLY IF FAILED)
+###############################################
+trigger_bulk_print_service_prod_pipeline_manual:
+  stage: deploy-bulk-print-service-stg-prod
+  needs: 
+    - job: approve_deploy
+  variables:
+    DEV_AUTOMATED: true
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+  - when: on_success
