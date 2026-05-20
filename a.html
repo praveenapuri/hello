@@ -1,9 +1,34 @@
-Automated tests failed. Patching template script cleanly with Python...
-Patch applied successfully. Dispatching alert email via native script...
-  File "/builds/bems/becn/visualize/becn-dash-webui/./sendEmailFailure.py", line 98
-    The following application containers have NOT been implemented:\n""" +
-        ^^^^^^^^^
-SyntaxError: invalid syntax
-Cleaning up project directory and file based variables
-00:00
-ERROR: Job failed: command terminated with exit code 1
+###############################################
+# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+  before_script:
+    # Fetch your original, un-patched email failure script
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailFailure.py/raw?ref=master -o sendEmailFailure.py'
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        echo "Automated tests failed. Dispatching clear text manual approval alert email..."
+        
+        # Craft the manual hold text block cleanly
+        ALERT_MESSAGE="⚠️ ACTION REQUIRED: Automated tests failed. The pipeline has been paused at the manual approval gate. Please log in to GitLab, review the test evaluation logs, and explicitly handle the manual 'gate_and_approval_hold' button to proceed with production deployment. Ref: $CI_PIPELINE_URL"
+        
+        # Execute the original script without patching it, passing the alert into the duration slot
+        python3 ./sendEmailFailure.py \
+          -s "$EMAIL_FROM" \
+          -r "$EMAIL_TO" \
+          -c "$CR_NUM" \
+          -a "$APP_NAME" \
+          -ps "$START_TIME" \
+          -pd "$ALERT_MESSAGE" \
+          -st "$CI_PIPELINE_CREATED_AT"
+      else
+        echo "Automated tests passed successfully. Bypassing email alert."
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
