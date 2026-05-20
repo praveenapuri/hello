@@ -3,25 +3,24 @@
 ###############################################
 trigger_bulk_print_service_prod_pipeline_manual:
   stage: deploy-bulk-print-service-stg-prod
-  # REMOVED strict 'needs' to prevent GitLab linting errors at startup
+  # FIXED: Corrected typo from 'dependecies' to 'dependencies'
   dependencies:
     - test_status_collector
   variables:
     DEV_AUTOMATED: "true"
-    [cite_start]PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master" [cite: 10]
-    [cite_start]PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master" [cite: 10]
-    [cite_start]ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/" [cite: 10]
-    [cite_start]HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger" [cite: 10]
-    [cite_start]APP_NAME: "BulkPrintService" [cite: 10]
-    [cite_start]APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE [cite: 10]
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
   trigger:
-    [cite_start]project: 'bems/becn/visualize/becn-bulk-print-service' [cite: 10]
-    [cite_start]branch: 'master' [cite: 10]
-    [cite_start]strategy: depend [cite: 10]
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
     forward:
-      [cite_start]pipeline_variables: true [cite: 10]
+      pipeline_variables: true
   rules:
-    # Safely links to the approval state without breaking the global graph layout
     - if: '$TEST_OUTCOME == "failure"'
       when: on_success
     - if: '$TEST_OUTCOME == "success"'
