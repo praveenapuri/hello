@@ -1,24 +1,9 @@
-Using effective pull policy of [Always] for container helper
-Using effective pull policy of [Always] for container init-permissions
-Preparing environment
-00:04
-Using FF_USE_POD_ACTIVE_DEADLINE_SECONDS, the Pod activeDeadlineSeconds will be set to the job timeout: 1h0m0s...
-WARNING: Advanced Pod Spec configuration enabled, merging the provided PodSpec to the generated one. This is a beta feature and is subject to change. Feedback is collected in this issue: https://gitlab.com/gitlab-org/gitlab-runner/-/issues/29659 ...
-Waiting for pod gitlab-runner/runner-p3yeohxzs-project-14347-concurrent-0-yb40tab2 to be running, status is Pending
-Running on runner-p3yeohxzs-project-14347-concurrent-0-yb40tab2 via generic-gitlab-runner-6dff84d4f9-2t2hh...
-Getting source from Git repository
-00:01
-Gitaly correlation ID: 01KS3JT62BEMNAJ9E4AZJSJB7N
-Fetching changes with git depth set to 20...
-Initialized empty Git repository in /builds/bems/becn/visualize/becn-dash-webui/.git/
-Created fresh repository.
-Checking out a3de26d6 as detached HEAD (ref is manual_approval_deploy)...
-Skipping Git submodules setup
-Executing "step_script" stage of the job script
-00:00
-$ curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailFailure.py/raw?ref=master -o sendEmailFailure.py
-$ if [ "$TEST_OUTCOME" = "failure" ]; then # collapsed multi-line command
-Automated tests passed successfully. Bypassing email alert.
+Automated tests failed. Patching template script cleanly with Python...
+Patch applied successfully. Dispatching alert email via native script...
+  File "/builds/bems/becn/visualize/becn-dash-webui/./sendEmailFailure.py", line 98
+    The following application containers have NOT been implemented:\n""" +
+        ^^^^^^^^^
+SyntaxError: invalid syntax
 Cleaning up project directory and file based variables
-00:01
-Job succeeded
+00:00
+ERROR: Job failed: command terminated with exit code 1
