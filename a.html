@@ -1,32 +1,13 @@
-###############################################
-# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
-###############################################
-approval_notification:
-  stage: approval
-  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
-  needs: 
-    - job: test_status_collector
-      artifacts: true
-  before_script:
-    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
-  script:
-    - |
-      if [ "$TEST_OUTCOME" = "failure" ]; then
-        echo "Automated tests failed. Dispatching modified manual approval alert email..."
-        
-        # We craft a concise, descriptive notification header string to inject via the -a flag
-        ALERT_SUBJECT_INJECTION="DashWebui [⚠️ TEST FAILURE: PAUSED AT APPROVAL GATE FOR PROD DEPLOYMENT. Action Required in GitLab. Ref: $CI_PIPELINE_URL ]"
-        
-        python3 ./sendEmail.py \
-          -s "$EMAIL_FROM" \
-          -r "$EMAIL_TO" \
-          -c "$CR_NUM" \
-          -a "$ALERT_SUBJECT_INJECTION" \
-          -ps "$START_TIME" \
-          -pd "$DURATION" \
-          -st "$CI_PIPELINE_CREATED_AT"
-      else
-        echo "Automated tests passed successfully. Bypassing email alert."
-      fi
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+$ curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailFailure.py/raw?ref=master -o sendEmailFailure.py
+$ if [ "$TEST_OUTCOME" = "failure" ]; then # collapsed multi-line command
+Automated tests failed. Dispatching modified manual approval alert email...
+Traceback (most recent call last):
+  File "/builds/bems/becn/visualize/becn-dash-webui/./sendEmailFailure.py", line 136, in <module>
+    main()
+  File "/builds/bems/becn/visualize/becn-dash-webui/./sendEmailFailure.py", line 88, in main
+    msg.set_content("""\
+                    ^^^^
+TypeError: can only concatenate str (not "NoneType") to str
+Cleaning up project directory and file based variables
+00:01
+ERROR: Job failed: command terminated with exit code 1
