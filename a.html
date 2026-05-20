@@ -1,123 +1,34 @@
-def main():
-    parser = ArgumentParser(description="""\
-Send email message of deployment failure
-""")
-    parser.add_argument('-s', '--sender', required=True,
-                        help='The value of the From: header (required)')
-    parser.add_argument('-r', '--recipient', required=True,
-                        action='append', metavar='RECIPIENT',
-                        default=[], dest='recipients',
-                        help='A To: header value (at least one required)')
-    parser.add_argument('-c', '--cr', required=True,
-                        help='The value of the CR number (required)')
-    parser.add_argument('-a', '--application', required=False,
-                        help='The name of the application')
-    parser.add_argument('-pu', '--pipelineurl', required=False,
-                        help='The url of the GitLab pipeline')
-    parser.add_argument('-ps', '--plannedstart', required=True,
-                        help='The planned start time')
-    parser.add_argument('-pd', '--plannedduration', required=True,
-                        help='Duration of the planned implementation window (in minutes)')
-    parser.add_argument('-st', '--start', required=False,
-                        help='The start date and time')
-    parser.add_argument('-e', '--exitcode', required=False,
-                        help='Exit code of a previous script')
-    args = parser.parse_args()
-
-    # Create the message
-    startTime = datetime.strptime(args.start, '%Y-%m-%dT%H:%M:%S%fz')
-    startTime = startTime.replace(tzinfo=ZoneInfo('UTC'))
-    eastern_tz = ZoneInfo('America/New_York')
-    now = datetime.now(tz=eastern_tz)
-    time_object_start = datetime.strptime(args.plannedstart, '%H:%M').time()
-    datetime_object_start = now.replace(hour = time_object_start.hour, minute = time_object_start.minute)
-    datetime_object_end = datetime_object_start + timedelta(minutes=int(args.plannedduration))
-
-    nowFomatted = now.strftime("%Y-%m-%d %H:%M:%S")
-    plannedStartFormatted = datetime_object_start.strftime("%Y-%m-%d %H:%M:%S")
-    plannedEndFormatted = datetime_object_end.strftime("%Y-%m-%d %H:%M:%S")
-
-    startEt = startTime.astimezone(eastern_tz)
-    startEtFormatted = startEt.strftime("%Y-%m-%d %H:%M:%S")
-
-    msg = EmailMessage()
-    msg['Subject'] = 'Internal ROUTINE BEMSCR-' + args.cr + ' :BEMSD: '+ args.application + ' - Automated Monthly Container Rebuild- ROUTINE - has started and ended'
-    msg['To'] = ', '.join(args.recipients)
-    msg['From'] = args.sender
-    msg.preamble = 'Container rebuild.\n'
-    addonText = "The script creating the Harness job has failed."
-    addonTextEnd = ""
-    addonTextHTML = "The script creating the Harness job has failed."
-    addonTextEndHTML = ""
-
-    if args.exitcode == "2":
-        addonTextEnd = """Check your parameters when calling the build script."""
-        addonTextEndHTML = """<p>Check your parameters when calling the build script.</p>"""
-    elif args.exitcode == "3":
-        addonTextEnd = """Check that you are passing in the correct kustomization URL."""
-        addonTextEndHTML = """<p>Check that you are passing in the correct kustomization URL.</p>"""
-    elif args.exitcode == "4":
-        addonTextEnd = """Check that your Artifactory credentials and URL are correct."""
-        addonTextEndHTML = """<p>Check that your Artifactory credentials and URL are correct.</p>"""
-    elif args.exitcode == "5":
-        addonTextEnd = """Check that your Harness credentials and URL are correct."""
-        addonTextEndHTML = """<p>Check that your Harness credentials and URL are correct.</p>"""
-    elif args.exitcode == "6":
-        addonTextEnd = """Check that the prod autoscaler has a minReplica of at least 2."""
-        addonTextEndHTML = """<p>Check that the prod autoscaler has a minReplica of at least 2.</p>"""
-    elif args.exitcode == "7":
-        addonTextEnd = """The application reports that it is out of sync with the current kubernetes artifacts."""
-        addonTextEndHTML = """<p>The application reports that it is out of sync with the current kubernetes artifacts.</p>"""
-    elif args.exitcode != "0":
-        addonTextEnd = """Check your parameters and your Harness pipeline"""
-        addonTextEndHTML = """<p>Check your parameters and your Harness pipeline</p>"""
-    
-    msg.set_content("""\
-    The following application containers have NOT been implemented:\n""" +
-    args.application +
-    """\n
-    Planned Implementation Date & Time Window: """ + plannedStartFormatted + " - " + plannedEndFormatted + """ ET
-    Actual Schedule Implementation Start Date & Time: """ + startEtFormatted + """ ET
-    Actual Schedule Implementation End Date & Time: """ + nowFomatted + """ ET
-    Actual Schedule Outage Start Date & Time: N/A
-    Actual Schedule Outage End Date & Time: N/A
-    Implemetation Results: Not Implemented
-    Post Implementation Comments: """ + addonText + """
-    Failed GitLab pipeline URL: """ + args.pipelineurl + """
-    """ + addonTextEnd + """
-    """)
-
-    # Add the html version.  This converts the message into a multipart/alternative
-    # container, with the original text message as the first part and the new html
-    # message as the second part.
-    deploy_cid = make_msgid()
-    msg.add_alternative("""\
-    <html>
-    <head></head>
-    <body>
-        <p>The following application containers have NOT been implemented:</p>"""+
-        args.application +
-        """
-        <p>Planned Implementation Date & Time Window: """ + plannedStartFormatted + " - " + plannedEndFormatted + """ ET</p>
-        <p>Actual Schedule Implementation Start Date & Time: """ + startEtFormatted + """ ET</p>
-        <p>Actual Schedule Implementation End Date & Time: """ + nowFomatted + """ ET</p>
-        <p>Actual Schedule Outage Start Date & Time: N/A</p>
-        <p>Actual Schedule Outage End Date & Time: N/A</p>
-        <p>Implemetation Results: Not Implemented</p>
-        <p>Post Implementation Comments: """ + addonTextHTML + """</p>
-        <p>Failed GitLab pipeline URL: """ + args.pipelineurl + """</p>""" +
-        addonTextEndHTML + """
-    </body>
-    </html>
-    """.format(asparagus_cid=deploy_cid[1:-1]), subtype='html')
-
-    # Make a local copy of what we are going to send.
-    # with open('outgoing.msg', 'wb') as f:
-    #     f.write(bytes(msg))
-
-    with smtplib.SMTP('mailhost1.cbp.dhs.gov', 25) as s:
-        s.send_message(msg)
-
-
-if __name__ == '__main__':
-    main()
+###############################################
+# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+  before_script:
+    # Fetches the standard core python mailer utility from your centralized repository
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmail.py/raw?ref=master -o sendEmail.py'
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        echo "Automated tests failed. Dispatching pause and manual approval alert email..."
+        
+        # Constructs the notification payload detailing the manual hold state
+        CUSTOM_BODY="Attention Team,\n\nThe automated test suite for $APP_NAME has completed with a FAILURE status.\n\nAs per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.\n\nACTION REQUIRED:\nPlease log in to GitLab, review the test evaluation logs, and explicitly 'Approve' or 'Reject' this execution to determine if production deployment should proceed.\n\nPipeline Reference: $CI_PIPELINE_URL"
+        
+        python3 ./sendEmail.py \
+          -s "$EMAIL_FROM" \
+          -r "$EMAIL_TO" \
+          -c "$CR_NUM" \
+          -a "$APP_NAME" \
+          -ps "$START_TIME" \
+          -pd "$DURATION" \
+          -st "$CI_PIPELINE_CREATED_AT" \
+          -b "$CUSTOM_BODY"
+      else
+        echo "Automated tests passed successfully. Bypassing email alert."
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
