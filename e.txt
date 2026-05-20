@@ -132,23 +132,46 @@ approval_notification:
     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
 
 ###############################################
-# GATEWAY ACTION: PAUSES ONLY ON TEST FAILURE
+# GATEWAY ACTION: ALWAYS CREATED UPFRONT
 ###############################################
 gate_and_approval_hold:
   stage: approval
-  needs: 
+  needs:
+    - job: test_status_collector
+  script:
+    - echo "Approval cleared. Releasing deployment sequence..."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: manual
+      allow_failure: false
+
+###############################################
+# AUTO-APPROVER (RUNS ON SUCCESS TO BYPASS THE MANUAL GATE)
+###############################################
+auto_gate_pass:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs:
     - job: test_status_collector
       artifacts: true
   script:
-    - echo "Manual approval action captured successfully. Releasing deployment sequence..."
+    - |
+      if [ "$TEST_OUTCOME" = "success" ]; then
+        echo "Tests passed! Automatically triggering the approval gate via API..."
+        # Query for the job ID of gate_and_approval_hold
+        JOB_ID=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs?scope=manual" | python3 -c "import sys, json; print(next((j['id'] for j in json.load(sys.stdin) if j['name'] == 'gate_and_approval_hold'), ''))")
+        if [ -n "$JOB_ID" ]; then
+          curl -X POST -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/jobs/$JOB_ID/play"
+          echo "Gate successfully played."
+        else
+          echo "Manual gate job ID not found."
+          exit 1
+        fi
+      else
+        echo "Tests failed. Keeping the pipeline locked until manual interaction occurs."
+      fi
   rules:
-    # Path A: If tests pass, bypass human gate automatically
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true" && $TEST_OUTCOME == "success"'
-      when: on_success
-    # Path B: If tests fail, drop an interactive play button right here to halt everything
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true" && $TEST_OUTCOME == "failure"'
-      when: manual
-      allow_failure: false
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
 
 ###############################################
 # CONSOLIDATED SINGLE DOWNSTREAM DEPLOYMENT TRIGGER
