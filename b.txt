@@ -202,7 +202,11 @@ trigger_bulk_print_service_prod_pipeline_auto:
 ###############################################
 trigger_bulk_print_service_prod_pipeline_manual:
   stage: deploy-bulk-print-service-stg-prod
-  # Removed needs/dependencies entirely to accommodate bridge job constraints
+  # FIX: Using 'optional: true' establishes the graph connection to the manual button 
+  # without causing linter errors if the manual button is skipped at runtime.
+  needs:
+    - job: approve_deploy
+      optional: true
   variables:
     DEV_AUTOMATED: "true"
     PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
@@ -218,7 +222,6 @@ trigger_bulk_print_service_prod_pipeline_manual:
     forward:
       pipeline_variables: true
   rules:
-    # Safely sequences execution based on stage order and dynamic variable logic
     - if: '$TEST_OUTCOME == "failure"'
       when: on_success
     - if: '$TEST_OUTCOME == "success"'
