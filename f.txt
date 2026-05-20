@@ -1,56 +1,32 @@
-sh-4.4$ lsblk
-NAME                   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
-nvme0n1                259:0    0  300G  0 disk
-├─nvme0n1p1            259:2    0    1M  0 part
-└─nvme0n1p2            259:3    0  300G  0 part /
-nvme5n1                259:1    0    1T  0 disk
-└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
-nvme3n1                259:4    0  2.7T  0 disk
-├─prdjrnvg-epicjrnlv   253:3    0  2.4T  0 lvm  /epic/jrn
-└─prdjrnvg-epicfileslv 253:4    0  299G  0 lvm  /epicfiles
-nvme4n1                259:5    0  300G  0 disk
-├─prdinstvg-epiclv     253:0    0   20G  0 lvm  /epic
-├─prdinstvg-epictmplv  253:1    0   50G  0 lvm  /epic/tmp
-└─prdinstvg-epicprdlv  253:2    0  130G  0 lvm  /epic/prd
-nvme1n1                259:6    0    1T  0 disk
-└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
-nvme6n1                259:7    0    1T  0 disk
-└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
-nvme2n1                259:8    0    1T  0 disk
-└─prdvg-prd01lv        253:5    0  3.3T  0 lvm  /epic/prd01
-sh-4.4$
-
-sh-4.4$ sudo nvme list
-Node                  SN                   Model                                    Namespace Usage                      Format           FW Rev
---------------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
-/dev/nvme0n1          vol0169d82b5f4376cca Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
-/dev/nvme1n1          vol01c91a8fe65e305af Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme2n1          vol0b373880acf425ac5 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme3n1          vol07909a71211218f78 Amazon Elastic Block Store               1           2.90  TB /   2.90  TB    512   B +  0 B   2.0
-/dev/nvme4n1          vol0b2032b4691bc236c Amazon Elastic Block Store               1         322.12  GB / 322.12  GB    512   B +  0 B   2.0
-/dev/nvme5n1          vol05e8d4ab880e1d167 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-/dev/nvme6n1          vol0fe9676b93ff51819 Amazon Elastic Block Store               1           1.10  TB /   1.10  TB    512   B +  0 B   2.0
-
-sh-4.4$ sudo pvs
-  PV           VG        Fmt  Attr PSize     PFree
-  /dev/nvme1n1 prdvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme2n1 prdvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme3n1 prdjrnvg  lvm2 a--     <2.64t 1020.00m
-  /dev/nvme4n1 prdinstvg lvm2 a--   <300.00g <100.00g
-  /dev/nvme5n1 prdvg     lvm2 a--  <1024.00g <186.50g
-  /dev/nvme6n1 prdvg     lvm2 a--  <1024.00g <186.50g
-  
-  sh-4.4$ sudo vgs
-  VG        #PV #LV #SN Attr   VSize    VFree
-  prdinstvg   1   3   0 wz--n- <300.00g <100.00g
-  prdjrnvg    1   2   0 wz--n-   <2.64t 1020.00m
-  prdvg       4   1   0 wz--n-   <4.00t  745.98g
-  
-  sh-4.4$ sudo lvs
-  LV          VG        Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
-  epiclv      prdinstvg -wi-ao----  20.00g
-  epicprdlv   prdinstvg -wi-ao---- 130.00g
-  epictmplv   prdinstvg -wi-ao----  50.00g
-  epicfileslv prdjrnvg  -wi-ao---- 299.00g
-  epicjrnlv   prdjrnvg  -wi-ao----   2.34t
-  prd01lv     prdvg     -wi-ao----   3.27t
+###############################################
+# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+  before_script:
+    # Fetches your brand new separate test failure script from the central repository
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailTestFailure.py/raw?ref=master -o sendEmailTestFailure.py'
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        echo "Automated tests failed. Executing dedicated sendEmailTestFailure.py tracking script..."
+        
+        # Passes arguments matching the schema without overloading properties or breaking data types
+        python3 ./sendEmailTestFailure.py \
+          -s "$EMAIL_FROM" \
+          -r "$EMAIL_TO" \
+          -c "$CR_NUM" \
+          -a "$APP_NAME" \
+          -pu "$CI_PIPELINE_URL" \
+          -ps "$START_TIME" \
+          -pd "$DURATION" \
+          -st "$CI_PIPELINE_CREATED_AT"
+      else
+        echo "Automated tests passed successfully. Bypassing email alert."
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
