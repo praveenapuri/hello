@@ -2,25 +2,30 @@
 # Test Status Collector
 ###############################################
 test_status_collector:
-  stage: automationtests-at
+  stage: test-evaluation  # Moved to prevent DAG race conditions
   image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
   needs:
     - job: trigger_target_pipeline
   script:
     - echo "Fetching status of the triggered pipeline bridge job..."
-    # FIXED: Querying the /bridges endpoint instead of /jobs
+    # Wrapped in try/except. If the API fails or returns non-JSON, it safely defaults to 'failed' instead of crashing.
     - >
       TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" 
       "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges" 
-      | python3 -c "import sys, json; print(next((job['status'] for job in json.load(sys.stdin) if job['name'] == 'trigger_target_pipeline'), 'failed'))")
-    - echo "Downstream test pipeline finished with status -> $TRIGGER_STATUS"
+      | python3 -c "import sys, json; 
+      try: 
+        d=json.load(sys.stdin); 
+        print(next((j['status'] for j in d if isinstance(j, dict) and j.get('name')=='trigger_target_pipeline'), 'failed')) if isinstance(d, list) else print('failed')
+      except: 
+        print('failed')" | tr -d '\n\r')
+    - echo "Raw status from API -> [${TRIGGER_STATUS}]"
     - |
       if [ "$TRIGGER_STATUS" = "success" ]; then
-        echo "TEST_OUTCOME=success" >> result.env
+        echo "TEST_OUTCOME=success" > result.env
       else
-        echo "TEST_OUTCOME=failure" >> result.env
+        echo "TEST_OUTCOME=failure" > result.env
       fi
-    - echo "Passing the following variables to the next stage:"
+    - echo "Exported to result.env:"
     - cat result.env
   artifacts:
     reports:
@@ -28,6 +33,7 @@ test_status_collector:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
       when: always
+
 
 ###############################################
 # APPROVE / REJECT (ONLY USED ON FAILURE)
@@ -40,8 +46,8 @@ approve_deploy:
   script:
     - echo "Deployment manually approved by operator. Proceeding to production deployment..."
   rules:
-    # FIXED: Moved when: manual inside the rule so it doesn't get overridden
-    - if: '$TEST_OUTCOME == "failure"'
+    # Using Regex to prevent strict string mismatch issues
+    - if: '$TEST_OUTCOME =~ /failure/'
       when: manual
       allow_failure: false
     - when: never
@@ -55,8 +61,7 @@ reject_deploy:
     - echo "Deployment explicitly rejected by operator. Halting pipeline."
     - exit 1
   rules:
-    # FIXED: Moved when: manual inside the rule so it doesn't get overridden
-    - if: '$TEST_OUTCOME == "failure"'
+    - if: '$TEST_OUTCOME =~ /failure/'
       when: manual
       allow_failure: false
     - when: never
