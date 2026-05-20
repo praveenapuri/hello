@@ -1,27 +1,49 @@
-Waiting for pod gitlab-runner/runner-p3yeohxzs-project-14347-concurrent-0-tkbg7mp8 to be running, status is Pending
-Running on runner-p3yeohxzs-project-14347-concurrent-0-tkbg7mp8 via generic-gitlab-runner-6dff84d4f9-dd2bk...
-Getting source from Git repository
-00:01
-Gitaly correlation ID: 01KS2XNXTESZEYQ9V3ZW4YCR6D
-Fetching changes with git depth set to 20...
-Initialized empty Git repository in /builds/bems/becn/visualize/becn-dash-webui/.git/
-Created fresh repository.
-Checking out 5dea2c42 as detached HEAD (ref is manual_approval_deploy)...
-Skipping Git submodules setup
-Executing "step_script" stage of the job script
-00:01
-$ echo "Fetching status of the triggered pipeline bridge job..."
-Fetching status of the triggered pipeline bridge job...
-$ TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN"  "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges"  | python3 -c "import sys, json;  try:  # collapsed multi-line command
-  File "<string>", line 1
-    import sys, json;  try: 
-                       ^^^
-SyntaxError: invalid syntax
-Uploading artifacts for failed job
-00:00
-Uploading artifacts...
-WARNING: result.env: no matching files. Ensure that the artifact path is relative to the working directory (/builds/bems/becn/visualize/becn-dash-webui) 
-ERROR: No files to upload                          
-Cleaning up project directory and file based variables
-00:01
-ERROR: Job failed: command terminated with exit code 1
+###############################################
+# Test Status Collector
+###############################################
+test_status_collector:
+  stage: test-evaluation  
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs:
+    - job: trigger_target_pipeline
+  script:
+    - echo "Fetching status of the triggered pipeline bridge job..."
+    
+    # 1. Safely write the Python parsing logic to a temporary file
+    - |
+      cat << 'EOF' > parse_status.py
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          if isinstance(data, list):
+              status = next((job['status'] for job in data if isinstance(job, dict) and job.get('name') == 'trigger_target_pipeline'), 'failed')
+              print(status)
+          else:
+              print('failed')
+      except Exception:
+          print('failed')
+      EOF
+
+    # 2. Curl the API and pipe it into our new Python script
+    - >
+      TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" 
+      "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges" 
+      | python3 parse_status.py | tr -d '\n\r')
+      
+    - echo "Raw status from API -> [${TRIGGER_STATUS}]"
+    
+    # 3. Evaluate and export
+    - |
+      if [ "$TRIGGER_STATUS" = "success" ]; then
+        echo "TEST_OUTCOME=success" > result.env
+      else
+        echo "TEST_OUTCOME=failure" > result.env
+      fi
+    - echo "Exported to result.env:"
+    - cat result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
+      when: always
