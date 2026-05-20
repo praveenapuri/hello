@@ -10,31 +10,39 @@ approval_notification:
   script:
     - |
       if [ "$TEST_OUTCOME" = "failure" ]; then
-        echo "Automated tests failed. Dispatching native shell manual approval alert email..."
+        echo "Automated tests failed. Dispatching robust inline Python alert..."
         
-        # 1. Define the customized email body plain text
-        EMAIL_BODY="Attention Team,
+        python3 -c "
+      import smtplib
+      from email.mime.text import MIMEText
 
-        The automated test suite for $APP_NAME has completed with a FAILURE status.
-        
-        As per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.
-        
-        ACTION REQUIRED:
-        Please log in to GitLab, review the test evaluation logs, and explicitly handle the manual 'gate_and_approval_hold' button to determine if production deployment should proceed.
-        
-        Pipeline Reference: $CI_PIPELINE_URL
-        Change Request Number: $CR_NUM"
-        
-        # 2. Send via native Linux mailx using your defined variables
-        # Note: If mailx is not installed in the UBI image, it falls back gracefully to a standard sendmail stream
-        if command -v mailx &> /dev/null; then
-          echo "$EMAIL_BODY" | mailx -s "⚠️ ALERT: $APP_NAME Deployment Paused at Approval Gate" -r "$EMAIL_FROM" "$EMAIL_TO"
-        else
-          echo -e "Subject: ⚠️ ALERT: $APP_NAME Deployment Paused at Approval Gate\nFrom: $EMAIL_FROM\nTo: $EMAIL_TO\n\n$EMAIL_BODY" | /usr/sbin/sendmail -t
-        fi
-        
-        echo "Alert email successfully dispatched to relay."
-      else
+      # Construct the clear text notification body
+      body = '''Attention Team,
+
+      The automated test suite for $APP_NAME has completed with a FAILURE status.
+
+      As per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.
+
+      ACTION REQUIRED:
+      Please log in to GitLab, review the test evaluation logs, and explicitly handle the manual approval button to determine if production deployment should proceed.
+
+      Pipeline Reference: $CI_PIPELINE_URL
+      Change Request Number: $CR_NUM'''
+
+      msg = MIMEText(body)
+      msg['Subject'] = '⚠️ ALERT: $APP_NAME Deployment Paused at Approval Gate'
+      msg['From'] = '$EMAIL_FROM'
+      msg['To'] = '$EMAIL_TO'
+
+      try:
+          # Connects directly to the internal relay port without needing OS binaries
+          with smtplib.SMTP('mail.cbp.dhs.gov', 25) as server:
+              server.send_message(msg)
+          print('Alert email successfully dispatched to relay.')
+      except Exception as e:
+          print(f'Failed to send email via relay: {e}')
+      "
+      else:
         echo "Automated tests passed successfully. Bypassing email alert."
       fi
   rules:
