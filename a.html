@@ -1,13 +1,41 @@
-$ curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailFailure.py/raw?ref=master -o sendEmailFailure.py
-$ if [ "$TEST_OUTCOME" = "failure" ]; then # collapsed multi-line command
-Automated tests failed. Dispatching modified manual approval alert email...
-Traceback (most recent call last):
-  File "/builds/bems/becn/visualize/becn-dash-webui/./sendEmailFailure.py", line 136, in <module>
-    main()
-  File "/builds/bems/becn/visualize/becn-dash-webui/./sendEmailFailure.py", line 88, in main
-    msg.set_content("""\
-                    ^^^^
-TypeError: can only concatenate str (not "NoneType") to str
-Cleaning up project directory and file based variables
-00:01
-ERROR: Job failed: command terminated with exit code 1
+###############################################
+# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        echo "Automated tests failed. Dispatching native shell manual approval alert email..."
+        
+        # 1. Define the customized email body plain text
+        EMAIL_BODY="Attention Team,
+
+        The automated test suite for $APP_NAME has completed with a FAILURE status.
+        
+        As per our SecDevOps deployment rules, the pipeline has been safely paused at the manual approval gate.
+        
+        ACTION REQUIRED:
+        Please log in to GitLab, review the test evaluation logs, and explicitly handle the manual 'gate_and_approval_hold' button to determine if production deployment should proceed.
+        
+        Pipeline Reference: $CI_PIPELINE_URL
+        Change Request Number: $CR_NUM"
+        
+        # 2. Send via native Linux mailx using your defined variables
+        # Note: If mailx is not installed in the UBI image, it falls back gracefully to a standard sendmail stream
+        if command -v mailx &> /dev/null; then
+          echo "$EMAIL_BODY" | mailx -s "⚠️ ALERT: $APP_NAME Deployment Paused at Approval Gate" -r "$EMAIL_FROM" "$EMAIL_TO"
+        else
+          echo -e "Subject: ⚠️ ALERT: $APP_NAME Deployment Paused at Approval Gate\nFrom: $EMAIL_FROM\nTo: $EMAIL_TO\n\n$EMAIL_BODY" | /usr/sbin/sendmail -t
+        fi
+        
+        echo "Alert email successfully dispatched to relay."
+      else
+        echo "Automated tests passed successfully. Bypassing email alert."
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
