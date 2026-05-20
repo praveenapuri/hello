@@ -17,7 +17,6 @@ variables:
   START_TIME: "14:00"
   DURATION: "120"
   APP_WEBUI_VERSION: $APP_VERSION_DASH_WEBUI
- 
   HARNESS_TRIGGER_URL_STGPROD: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/ge5qEsG3QQ-qXfigFXJBSQ/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDWEBUISTGPROD&triggerIdentifier=becndashwebuiprodtrigger"
 
 include:
@@ -34,36 +33,23 @@ include:
   - file: templates/automatedRebuildsTokenBECNUI.yml
     project: bems/secdevops/gitlab-ops/automated-builds
 
-
 stages:
   - compliance
   - sast
   - dast
   - build-deploy-bulk-print-service-rt
-  # - build-deploy-egis-bdw-integration-service-rt
-  # - build-deploy-dash-data-quality-service-rt
-  # - build-deploy-dash-security-service-rt
-  # - build-deploy-dash-service-rt
-  # - build-deploy-dash-webui-service-rt
   - Deployment
   - automationtests-at
   - approval
   - deploy-bulk-print-service-stg-prod
-  # - deploy-egis-bdw-integration-service-prod
-  # - deploy-dash-data-quality-service-stg-prod
-  # - deploy-dash-security-service-stg-prod
-  # - deploy-dash-service-stg-prod
-  # - deploy-dash-webui-service-stg-prod
   - StgProdDeployment
   - failedRetry
   - failedRetry2
   - failed
   - success
 
-
-
 ###############################################
-# TEST PIPELINE (FAILS NORMALLY)
+# TEST PIPELINE
 ###############################################
 trigger_target_pipeline:
   stage: automationtests-at
@@ -84,30 +70,35 @@ trigger_target_pipeline:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
 
 ###############################################
-# Test Status
+# Test Status Collector
 ###############################################
 test_status_collector:
   stage: automationtests-at
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11  # Reusing your python image for consistency
   needs:
     - job: trigger_target_pipeline
       artifacts: false
   script:
+    - echo "Fetching status of the triggered pipeline job..."
+    # Query the GitLab API for the status of the trigger job inside THIS pipeline
+    - >
+      TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" 
+      "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs" 
+      | python3 -c "import sys, json; print(next((job['status'] for job in json.load(sys.stdin) if job['name'] == 'trigger_target_pipeline'), 'failed'))")
     - |
-      if [ "$CI_PIPELINE_SOURCE" ]; then
-        # Check upstream job result via exit status
-        if [ "$CI_JOB_STATUS" = "success" ]; then
-          echo "TEST_OUTCOME=success" >> result.env
-        else
-          echo "TEST_OUTCOME=failure" >> result.env
-        fi
+      if [ "$TRIGGER_STATUS" = "success" ]; then
+        echo "TEST_OUTCOME=success" >> result.env
+      else
+        echo "TEST_OUTCOME=failure" >> result.env
       fi
   artifacts:
     reports:
       dotenv: result.env
-  when: always
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"'
 
 ###############################################
-#  EMAIL NOTIFICATION (ONLY ON FAILURE)
+# EMAIL NOTIFICATION (ONLY ON FAILURE)
 ###############################################
 approval_notification:
   stage: approval
@@ -141,14 +132,7 @@ approve_deploy:
     - test_status_collector
   when: manual
   script:
-    - echo "CONFIRM APPROVAL (type YES)"
-    - read CONFIRM
-    - |
-      if [ "$CONFIRM" != "YES" ]; then
-        echo "Approval cancelled"
-        exit 1
-      fi
-    - echo "Approved. Proceeding..."
+    - echo "Deployment manually approved by operator. Proceeding to production deployment..."
   allow_failure: false
   rules:
     - if: '$TEST_OUTCOME == "failure"'
@@ -161,13 +145,12 @@ reject_deploy:
     - test_status_collector
   when: manual
   script:
-    - echo "Deployment rejected"
+    - echo "Deployment explicitly rejected by operator. Halting pipeline."
     - exit 1
   allow_failure: false
   rules:
     - if: '$TEST_OUTCOME == "failure"'
     - when: never
-
 
 ###############################################
 # AUTO DEPLOY (ONLY IF TEST PASSES)
@@ -177,9 +160,8 @@ trigger_bulk_print_service_prod_pipeline_auto:
   needs: 
     - trigger_target_pipeline
     - test_status_collector
-
   variables:
-    DEV_AUTOMATED: true
+    DEV_AUTOMATED: "true"
     PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
     PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
     ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
@@ -204,7 +186,7 @@ trigger_bulk_print_service_prod_pipeline_manual:
   needs: 
     - job: approve_deploy
   variables:
-    DEV_AUTOMATED: true
+    DEV_AUTOMATED: "true"
     PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
     PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
     ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
@@ -218,4 +200,4 @@ trigger_bulk_print_service_prod_pipeline_manual:
     forward:
       pipeline_variables: true
   rules:
-  - when: on_success
+    - if: '$TEST_OUTCOME == "failure"'
