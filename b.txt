@@ -3,17 +3,17 @@ gate_and_approval_hold:
   needs:
     - job: test_status_collector
   variables:
-    # Define your list of authorized GitLab usernames separated by spaces
-    ALLOWED_APPROVERS: "alice bob charlie" 
+    # Define your list of authorized numeric GitLab User IDs separated by spaces
+    ALLOWED_USER_IDS: "12345 67890 55443" 
   before_script:
-    # Safely check if the user who clicked play is in the allowed list
+    # Check if the ID of the user who clicked play is in the allowed list
     - |
-      if ! echo " $ALLOWED_APPROVERS " | grep -q " $GITLAB_USER_LOGIN "; then
-        echo "❌ Access Denied: User '$GITLAB_USER_LOGIN' is not authorized to approve this gate."
+      if ! echo " $ALLOWED_USER_IDS " | grep -q " $GITLAB_USER_ID "; then
+        echo "❌ Access Denied: User ID '$GITLAB_USER_ID' is not authorized to approve this gate."
         exit 1
       fi
   script:
-    - echo "✅ Approval cleared by $GITLAB_USER_LOGIN. Releasing deployment sequence..."
+    - echo "✅ Approval cleared by User ID $GITLAB_USER_ID. Releasing deployment sequence..."
   rules:
     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
       when: manual
