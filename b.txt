@@ -3,17 +3,28 @@ gate_and_approval_hold:
   needs:
     - job: test_status_collector
   variables:
-    # Define your list of authorized numeric GitLab User IDs separated by spaces
     ALLOWED_USER_IDS: "12345 67890 55443" 
+    # 1. Define a default value for the comment
+    APPROVAL_COMMENT: "NONE" 
   before_script:
-    # Check if the ID of the user who clicked play is in the allowed list
+    # 2. Check authorization (from your previous requirement)
     - |
       if ! echo " $ALLOWED_USER_IDS " | grep -q " $GITLAB_USER_ID "; then
         echo "❌ Access Denied: User ID '$GITLAB_USER_ID' is not authorized to approve this gate."
         exit 1
       fi
+    # 3. Enforce the mandatory comment
+    - |
+      if [ "$APPROVAL_COMMENT" = "NONE" ] || [ -z "$APPROVAL_COMMENT" ]; then
+        echo "❌ Approval Failed: A justification comment is strictly required."
+        echo "👉 INSTRUCTIONS: Do not use the Play button. Click the job name, enter your justification in the 'APPROVAL_COMMENT' variable field, and click 'Trigger this manual action'."
+        exit 1
+      fi
   script:
-    - echo "✅ Approval cleared by User ID $GITLAB_USER_ID. Releasing deployment sequence..."
+    - echo "✅ Approval cleared by User ID $GITLAB_USER_ID."
+    - echo "💬 Approver Comment:"
+    - echo "   $APPROVAL_COMMENT"
+    - echo "Releasing deployment sequence..."
   rules:
     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
       when: manual
