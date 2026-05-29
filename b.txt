@@ -1,3 +1,7 @@
+I have gitlab cicd pipeline where a manual gate has been implemented to review and option to click approve to proceed after automated test job. how can I do access control to this manual gate? I want only certain ppl can approve the gate.
+
+here is the gate code block I have:
+
 gate_and_approval_hold:
   stage: approval
   needs:
