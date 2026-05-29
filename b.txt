@@ -1,13 +1,19 @@
-I have gitlab cicd pipeline where a manual gate has been implemented to review and option to click approve to proceed after automated test job. how can I do access control to this manual gate? I want only certain ppl can approve the gate.
-
-here is the gate code block I have:
-
 gate_and_approval_hold:
   stage: approval
   needs:
     - job: test_status_collector
+  variables:
+    # Define your list of authorized GitLab usernames separated by spaces
+    ALLOWED_APPROVERS: "alice bob charlie" 
+  before_script:
+    # Safely check if the user who clicked play is in the allowed list
+    - |
+      if ! echo " $ALLOWED_APPROVERS " | grep -q " $GITLAB_USER_LOGIN "; then
+        echo "❌ Access Denied: User '$GITLAB_USER_LOGIN' is not authorized to approve this gate."
+        exit 1
+      fi
   script:
-    - echo "Approval cleared. Releasing deployment sequence..."
+    - echo "✅ Approval cleared by $GITLAB_USER_LOGIN. Releasing deployment sequence..."
   rules:
     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
       when: manual
