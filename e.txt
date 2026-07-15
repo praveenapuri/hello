@@ -1,3 +1,7 @@
+Deploy StgProd Automated EKS:
+This job could not start because it could not retrieve the needed artifacts: semgrep-sast, secret_detection, gemnasium-dependency_scanning, dast, Deploy Automated EKS, test_status_collector
+Learn more about dependencies and common causes of this error.
+
 variables:
   DAST_WEBSITE: "https://becn-dash-webui-sit.dev.mesh.cbp.dhs.gov/"
   REBUILD_TOKEN: $REBUILD_TOKEN
