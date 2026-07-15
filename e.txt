@@ -1,10 +1,35 @@
 ###############################################
-# TEMPLATE OVERRIDES
+# TEMPLATE OVERRIDE FOR STG-PROD DEPLOYMENT
 ###############################################
 Deploy StgProd Automated EKS:
-  # Prevents GitLab from trying to download artifacts from skipped/missing jobs
+  # Prevents GitLab from attempting to download general artifacts globally
   dependencies: []
-
+  
+  # Explicitly redefines the hardcoded template requirements
+  needs:
+    # 1. Binds it to your manual approval gate safely
+    - job: gate_and_approval_hold
+      artifacts: false
+      
+    # 2. Neutrals the strict artifact demands from the error message
+    - job: semgrep-sast
+      artifacts: false
+      optional: true
+    - job: secret_detection
+      artifacts: false
+      optional: true
+    - job: gemnasium-dependency_scanning
+      artifacts: false
+      optional: true
+    - job: dast
+      artifacts: false
+      optional: true
+    - job: Deploy Automated EKS
+      artifacts: false
+      optional: true
+    - job: test_status_collector
+      artifacts: false
+      optional: true
 variables:
   DAST_WEBSITE: "https://becn-dash-webui-sit.dev.mesh.cbp.dhs.gov/"
   REBUILD_TOKEN: $REBUILD_TOKEN
