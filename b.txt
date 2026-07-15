@@ -71,3 +71,44 @@ gate_and_approval_hold:
     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
       when: manual         
       allow_failure: false
+
+###############################################
+# Test Status Collector
+###############################################
+test_status_collector:
+  stage: test-evaluation
+  needs:
+    - job: trigger_automated_test_suite
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  script:
+    - echo "Fetching status of the triggered pipeline bridge job..."
+    - |
+      cat << 'EOF' > parse_status.py
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          if isinstance(data, list):
+              status = next((job['status'] for job in data if isinstance(job, dict) and job.get('name') == 'trigger_automated_test_suite'), 'failed')
+              print(status)
+          else:
+              print('failed')
+      except Exception:
+          print('failed')
+      EOF
+    # FIX: Updated to target the GitLab API for pipeline bridge (trigger) jobs
+    - >
+      TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges" | python3 parse_status.py | tr -d '\n\r ')
+    - echo "Downstream test pipeline finished with status -> [${TRIGGER_STATUS}]"
+    - |
+      if [ "$TRIGGER_STATUS" = "success" ]; then
+        echo "TEST_OUTCOME=success" > result.env
+      else
+        echo "TEST_OUTCOME=failure" > result.env
+      fi
+    - cat result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: always
