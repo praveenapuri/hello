@@ -1,34 +1,541 @@
-Running with gitlab-runner 18.10.1 (3b43bf9f)
-  on generic-gitlab-runner-84849b9b75-5hmhw P3YeoHxzs, system ID: r_uz3Y76Ttcay6
-  feature flags: FF_USE_ADVANCED_POD_SPEC_CONFIGURATION:true
-Resolving secrets
-Preparing the "kubernetes" executor
-00:00
-Using Kubernetes namespace: gitlab-runner
-Using Kubernetes executor with image docker.cbp.dhs.gov/cloud/ubi/python:3.11 ...
-Using attach strategy to execute scripts...
-Using effective pull policy of [Always] for container init-permissions
-Using effective pull policy of [Always] for container build
-Using effective pull policy of [Always] for container helper
-Preparing environment
-00:04
-Using FF_USE_POD_ACTIVE_DEADLINE_SECONDS, the Pod activeDeadlineSeconds will be set to the job timeout: 1h0m0s...
-WARNING: Advanced Pod Spec configuration enabled, merging the provided PodSpec to the generated one. This is a beta feature and is subject to change. Feedback is collected in this issue: https://gitlab.com/gitlab-org/gitlab-runner/-/issues/29659 ...
-Waiting for pod gitlab-runner/runner-p3yeohxzs-project-15329-concurrent-0-ogtn6sr1 to be running, status is Pending
-Running on runner-p3yeohxzs-project-15329-concurrent-0-ogtn6sr1 via generic-gitlab-runner-84849b9b75-5hmhw...
-Getting source from Git repository
-00:01
-Gitaly correlation ID: 01KXHWPKKA8XDS4E7SG6WJA7BF
-Fetching changes with git depth set to 20...
-Initialized empty Git repository in /builds/bems/becn/platform/becn-notification-mgmt-webui/.git/
-Created fresh repository.
-Checking out 9215a411 as detached HEAD (ref is manual_approval_deploy)...
-Skipping Git submodules setup
-Executing "step_script" stage of the job script
-00:01
-$ if [ "$TEST_OUTCOME" = "success" ]; then # collapsed multi-line command
-Tests passed! Marking job as GREEN. Auto-playing manual gate...
-{"message":"403 Forbidden"}Manual gate cleared automatically. Releasing deployments...
-Cleaning up project directory and file based variables
-00:01
-Job succeeded
+variables:
+  DAST_WEBSITE: "https://becn-dash-webui-sit.dev.mesh.cbp.dhs.gov/"
+  REBUILD_TOKEN: $REBUILD_TOKEN
+  PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui%2Fprod%2Fkustomization.yaml/raw?ref=master"
+  PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+  ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-webui/"
+  artifactoryToken: $ARTIFACTORY_TOKEN
+  HARNESS_TOKEN: $HARNESS_REBUILD
+  HARNESS_AGENT: "org.bemsd"
+  HARNESS_APP_NAME: bemsd-becn-rt-becn-dash-webui
+  # pipeline  -  CONTAINER-REBUILD-WEBUI
+  HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/bwBm_xg-QeWFV0leQdmq0Q/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=BECNAUTOMATEDWEBUIPIPELINES&triggerIdentifier=becndashwebuiautotrigger"
+  DEV_AUTOMATED: $DEV_AUTOMATED
+  EMAIL_FROM: "BEMSDTIDDevelopmentTeam@cbp.dhs.gov"
+  EMAIL_TO: $EMAIL_TO
+  CR_NUM: "NA"
+  APP_NAME: "DashWebui"
+  START_TIME: "14:00"
+  DURATION: "120"
+  APP_WEBUI_VERSION: $APP_VERSION_DASH_WEBUI
+  # pipeline  -  CONTAINER-REBUILD-WEBUI-STG-PROD
+  HARNESS_TRIGGER_URL_STGPROD: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/ge5qEsG3QQ-qXfigFXJBSQ/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDWEBUISTGPROD&triggerIdentifier=becndashwebuiprodtrigger"
+
+include:
+  - project: artifacts/templates
+    file: sast-gitlab-ci.yml
+  - project: artifacts/templates
+    file: secret-detection-gitlab-ci.yml
+  - project: bems/secdevops/templates/security
+    file: dependency.yml
+  - project: bems/secdevops/templates/security
+    file: dast.yml
+  - project: bems/secdevops/templates/security
+    file: compliance.yml
+  - file: templates/automatedRebuildsTokenBECNUI.yml
+    project: bems/secdevops/gitlab-ops/automated-builds
+
+stages:
+  - compliance
+  - sast
+  - dast
+  - build-deploy-bulk-print-service-rt
+  - build-deploy-egis-bdw-integration-service-rt
+  - build-deploy-dash-data-quality-service-rt
+  - build-deploy-dash-security-service-rt
+  - build-deploy-dash-service-rt
+  - build-deploy-dash-webui-service-rt
+  - Deployment
+  - automationtests-at
+  - test-evaluation       
+  - approval
+  - deploy-bulk-print-service-stg-prod
+  - deploy-egis-bdw-integration-service-prod
+  - deploy-dash-data-quality-service-stg-prod
+  - deploy-dash-security-service-stg-prod
+  - deploy-dash-service-stg-prod
+  - deploy-dash-webui-service-stg-prod
+  - StgProdDeployment
+  - failedRetry
+  - failedRetry2
+  - failed
+  - success
+
+###############################################
+# TEST PIPELINE
+###############################################
+trigger_target_pipeline:
+  stage: automationtests-at
+  allow_failure: true
+  variables:
+    RUN_STAGE: $RUN_STAGE
+    STAGE_NAME: $STAGE_NAME
+    SERENITY_ENV: $SERENITY_ENV
+    CUCUMBER_TAGS: $CUCUMBER_TAGS
+    CI_COMMIT_TAG: $CI_COMMIT_TAG
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-webui-at'
+    branch: $CI_COMMIT_TAG
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+
+###############################################
+# Test Status Collector
+###############################################
+test_status_collector:
+  stage: test-evaluation
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  script:
+    - echo "Fetching status of the triggered pipeline bridge job..."
+    - |
+      cat << 'EOF' > parse_status.py
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          if isinstance(data, list):
+              status = next((job['status'] for job in data if isinstance(job, dict) and job.get('name') == 'trigger_target_pipeline'), 'failed')
+              print(status)
+          else:
+              print('failed')
+      except Exception:
+          print('failed')
+      EOF
+    - >
+      TRIGGER_STATUS=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" 
+      "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/bridges" 
+      | python3 parse_status.py | tr -d '\n\r ')
+    - echo "Downstream test pipeline finished with status -> [${TRIGGER_STATUS}]"
+    - |
+      if [ "$TRIGGER_STATUS" = "success" ]; then
+        echo "TEST_OUTCOME=success" > result.env
+      else
+        echo "TEST_OUTCOME=failure" > result.env
+      fi
+    - cat result.env
+  artifacts:
+    reports:
+      dotenv: result.env
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: always
+
+###############################################
+# EMAIL NOTIFICATION (PAUSED FOR MANUAL APPROVAL)
+###############################################
+approval_notification:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs: 
+    - job: test_status_collector
+      artifacts: true
+    - job: auto_gate_pass # Ensures it waits for auto_gate_pass to finish
+  when: on_failure # Tells GitLab to only run this job if auto_gate_pass fails
+  before_script:
+    # Fetches your brand new separate test failure script from the central repository
+    - 'curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" https://gitlab.cbp.dhs.gov/api/v4/projects/19048/repository/files/sendEmailTestFailure.py/raw?ref=master -o sendEmailTestFailure.py'
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "failure" ]; then
+        echo "Automated tests failed. Executing dedicated sendEmailTestFailure.py tracking script..."
+        
+        # Passes arguments matching the schema without overloading properties or breaking data types
+        python3 ./sendEmailTestFailure.py \
+          -s "$EMAIL_FROM" \
+          -r "$EMAIL_TO" \
+          -c "$CR_NUM" \
+          -a "$APP_NAME" \
+          -pu "$CI_PIPELINE_URL" \
+          -ps "$START_TIME" \
+          -pd "$DURATION" \
+          -st "$CI_PIPELINE_CREATED_AT"
+      else
+        echo "Automated tests passed successfully. Bypassing email alert."
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+
+###############################################
+# GATEWAY ACTION: ALWAYS CREATED UPFRONT
+###############################################
+gate_and_approval_hold:
+  stage: approval
+  needs:
+    - job: test_status_collector
+    - job: auto_gate_pass # Ensures it waits for auto_gate_pass to finish
+  environment:
+    name: deployment-approval-gate # <--- ADD THIS
+    action: prepare
+  script:
+    - echo "Approval cleared. Releasing deployment sequence..."
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      when: manual
+      allow_failure: false
+
+###############################################
+# AUTO-APPROVER (RUNS ON SUCCESS TO BYPASS THE MANUAL GATE)
+###############################################
+auto_gate_pass:
+  stage: approval
+  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
+  needs:
+    - job: test_status_collector
+      artifacts: true
+  script:
+    - |
+      if [ "$TEST_OUTCOME" = "success" ]; then
+        echo "Tests passed! Marking job as GREEN. Auto-playing manual gate..."
+        
+        # Fetch the Job ID for gate_and_approval_hold
+        GATE_JOB_ID=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs" | python3 -c "import sys, json; print(next((j['id'] for j in json.load(sys.stdin) if j.get('name') == 'gate_and_approval_hold'), ''))")
+        
+        # Auto-Play the manual gate via API
+        if [ -n "$GATE_JOB_ID" ]; then
+          curl -s -k -X POST -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "$CI_API_V4_URL/projects/$CI_PROJECT_ID/jobs/$GATE_JOB_ID/play"
+          echo "Manual gate cleared automatically. Releasing deployments..."
+          exit 0
+        else
+          echo "Gate job not found. Check pipeline structure."
+          exit 1
+        fi
+      else
+        echo "Tests failed. Marking job as RED. Manual gate remains locked."
+        exit 1
+      fi
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+      allow_failure: true # Prevents the entire pipeline from immediately crashing, allowing the manual hold to function
+
+
+###############################################
+# RT DEPLOYMENT - Pipeline: CONTAINER-REBUILD-VISUALIZE-JDK17
+###############################################
+trigger_bulk_print_service_pipeline:
+  stage: build-deploy-bulk-print-service-rt
+  variables:
+    DEV_AUTOMATED: true
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_APP_NAME: "bemsd-becn-rt-becn-bulk-print-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/pMQCCVSzQUiGGbjhjr8N-g/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becnbulkprintservicetrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_egis_bdw_integration_service_pipeline:
+  stage: build-deploy-egis-bdw-integration-service-rt
+  variables:
+    DEV_AUTOMATED: true
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-egis-bdw-integration-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-egis-bdw-integration-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/egis-bdw-integration-service/"
+    HARNESS_APP_NAME: "bemsd-becn-rt-becn-egis-bdw-integration-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/GJBfebBySJG3863tWrtO7g/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becnegisbdwintegrationservicetrigger"
+    APP_NAME: "EgisBdwIntegrationService"
+    APP_PROD_VERSION: $APP_VERSION_EGIS_BDW_INTEGRATION_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-egis-bdw-integration-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_data_quality_service_pipeline:
+  stage: build-deploy-dash-data-quality-service-rt
+  variables:
+    DEV_AUTOMATED: true
+    #CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-data-quality-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-data-quality-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-data-quality-service/"
+    HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-data-quality-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/wBfx1dSzS6Geo7yJIWRQeA/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becndashdataqualityservicetrigger"
+    APP_NAME: "DashDataQualityService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_DATA_QUALITY_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-data-quality-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_security_service_pipeline:
+  stage: build-deploy-dash-security-service-rt
+  variables:
+    DEV_AUTOMATED: true
+    #CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-security-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-security-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-security-service/"
+    HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-security-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/ji-yKFBSQMytBDkY5ECjiA/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becndashsecurityservicetrigger"
+    APP_NAME: "DashSecurityService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_SECURITY_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-security-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_service_pipeline:
+  stage: build-deploy-dash-service-rt
+  variables:
+    DEV_AUTOMATED: true
+    #CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-service/"
+    HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/PExK87wYQwGvwr54rOfTKw/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becndashservicetrigger"
+    APP_NAME: "DashService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_webui_service_pipeline:
+  stage: build-deploy-dash-webui-service-rt
+  variables:
+    DEV_AUTOMATED: true
+    #CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-webui-service/"
+    HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/h9ovNCBLTm2cjUc3fn9FjA/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZEJDK17&triggerIdentifier=becndashwebuiservicetrigger"
+    APP_NAME: "DashWebuiService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_WEBUI_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-webui-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+###############################################
+# STAGING and PROD DEPLOYMENT - Pipeline : CONTAINER-REBUILD-VISUALIZE-STG-PROD-JDK17
+###############################################
+trigger_bulk_print_service_prod_pipeline:
+  stage: deploy-bulk-print-service-stg-prod
+  needs:
+    - job: gate_and_approval_hold
+  variables:
+    DEV_AUTOMATED: "true"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-bulk-print-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/bulk-print-service/"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/LB9IDuwoT2eJl487iEQdow/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becnbulkprintserviceprodtrigger"
+    APP_NAME: "BulkPrintService"
+    APP_PROD_VERSION: $APP_VERSION_BULK_PRINT_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-bulk-print-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:
+    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+
+#Egis BDW only in PROD  - Pipeline: CONTAINER-REBUILD-EGISBDW-PROD-JDK17
+trigger_egis_bdw_integration_service_prod_pipeline:
+  stage: deploy-egis-bdw-integration-service-prod
+  needs:
+    - job: gate_and_approval_hold
+  variables:
+    DEV_AUTOMATED: true
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-egis-bdw-integration-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-egis-bdw-integration-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/egis-bdw-integration-service/"
+    #HARNESS_APP_NAME: "bemsd-becn-rt-becn-egis-bdw-integration-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/v50hNRS1TpedZRATLRWlhw/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDEGISBDWSTGPRODJDK17&triggerIdentifier=becnegisbdwintegrationserviceprodtrigger"
+    APP_NAME: "EgisBdwIntegrationService"
+    APP_PROD_VERSION: $APP_VERSION_EGIS_BDW_INTEGRATION_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-egis-bdw-integration-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_data_quality_service_prod_pipeline:
+  stage: deploy-dash-data-quality-service-stg-prod
+  needs:
+    - job: gate_and_approval_hold
+  variables:
+    DEV_AUTOMATED: true
+    RT_DEPLOY: true
+   # CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-data-quality-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-data-quality-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-data-quality-service/"
+    #HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-data-quality-service"
+    APP_PROD_VERSION: $APP_VERSION_DASH_DATA_QUALITY_SERVICE
+    APP_NAME: "DashDataQualityService"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/CmfZbr2jRf27GXE-7TKBxA/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becndashdataqualityserviceprodtrigger"
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-data-quality-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_security_service_prod_pipeline:
+  stage: deploy-dash-security-service-stg-prod
+  needs:
+    - job: gate_and_approval_hold
+  variables:
+    DEV_AUTOMATED: true
+   # CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-security-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-security-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-security-service/"
+    #HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-security-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/rbOzL8xlS9G4lNsQRvKzLw/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becndashsecurityserviceprodtrigger"
+    APP_NAME: "DashSecurityService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_SECURITY_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-security-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_service_prod_pipeline:
+  stage: deploy-dash-service-stg-prod
+  needs:
+    - job: gate_and_approval_hold 
+  variables:
+    DEV_AUTOMATED: true
+   # CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-service/"
+    #Pretending RT as STAGING environment, once verify and review done, will replace Staging app name 
+    #HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/9korEohMSTqEtO4jFhu-pw/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becndashserviceprodtrigger"
+    APP_NAME: "DashService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+trigger_dash_webui_service_prod_pipeline:
+  stage: deploy-dash-webui-service-stg-prod
+  needs:
+    - job: gate_and_approval_hold
+  variables:
+    DEV_AUTOMATED: true
+    #CI_PIPELINE_SOURCE: "schedule"
+    PROD_KUSTOMIZATION: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui-service%2Fprod%2Fkustomization.yaml/raw?ref=master"
+    PROD_AUTOSCALER: "https://gitlab.cbp.dhs.gov/api/v4/projects/20190/repository/files/becn-dash-webui-service%2Fprod%2Fautoscaler.yaml/raw?ref=master"
+    ARTIFACTORY_IMAGE: "https://artifactory.cbp.dhs.gov/artifactory/docker-local/cbp/bemsd/becn/dash-webui-service/"
+    #HARNESS_APP_NAME: "bemsd-becn-rt-becn-dash-webui-service"
+    HARNESS_TRIGGER_URL: "https://harness.admin.mesh.cbp.dhs.gov/gateway/pipeline/api/webhook/custom/JPRC_3pqTIuaymctYz76HQ/v3?accountIdentifier=nMAehCfqRM-9VjvRcSkmVw&orgIdentifier=bemsd&projectIdentifier=becn&pipelineIdentifier=CONTAINERREBUILDVISUALIZESTGPRODJDK17&triggerIdentifier=becndashwebuiserviceprodtrigger"
+    APP_NAME: "DashWebuiService"
+    APP_PROD_VERSION: $APP_VERSION_DASH_WEBUI_SERVICE
+  trigger:
+    project: 'bems/becn/visualize/becn-dash-webui-service'
+    branch: 'master'
+    strategy: depend
+    forward:
+      pipeline_variables: true
+  rules:     
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $DEV_AUTOMATED == "true"
+
+
+###############################################
+# STAGING / PRODUCTION WEBUI RUNTIME DEPLOYMENT
+###############################################
+# StgProdDeployment:
+#   stage: StgProdDeployment
+#   needs:
+#     - job: gate_and_approval_hold
+#       optional: true
+#   script:
+#     - echo "Downstream deployment complete. Finalizing StgProdDeployment stage..."
+#   rules:
+#     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+#       when: on_success
+
+
+###############################################
+# TERMINATING STATUS STAGES
+###############################################
+# failedRetry:
+#   stage: failedRetry
+#   needs:
+#     - job: StgProdDeployment
+#   script:
+#     - echo "Executing failedRetry..."
+#   rules:
+#     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+#       when: on_failure
+
+# failedRetry2:
+#   stage: failedRetry2
+#   needs:
+#     - job: failedRetry
+#   script:
+#     - echo "Executing failedRetry2..."
+#   rules:
+#     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+#       when: on_failure
+
+# failed:
+#   stage: failed
+#   needs:
+#     - job: StgProdDeployment
+#       optional: true
+#     - job: failedRetry2
+#       optional: true
+#   script:
+#     - echo "Pipeline failed template tracking."
+#   rules:
+#     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+#       when: on_failure
+
+# success:
+#   stage: success
+#   needs:
+#     - job: StgProdDeployment
+#   script:
+#     - echo "Pipeline completed successfully!"
+#   rules:
+#     - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
+#       when: on_success
