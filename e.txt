@@ -1,25 +1,34 @@
-auto_gate_pass:
-  stage: approval
-  image: docker.cbp.dhs.gov/cloud/ubi/python:3.11
-  needs:
-    - job: test_status_collector
-      artifacts: true
-  script:
-    - |
-      if [ "$TEST_OUTCOME" = "success" ]; then
-        echo "Tests passed! Automatically triggering the approval gate via API..."
-        JOB_ID=$(curl -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/pipelines/$CI_PIPELINE_ID/jobs?scope=manual" | python3 -c "import sys, json; print(next((j['id'] for j in json.load(sys.stdin) if j['name'] == 'gate_and_approval_hold'), ''))")
-        if [ -n "$JOB_ID" ]; then
-          curl -X POST -s -k -H "PRIVATE-TOKEN: $REBUILD_TOKEN" "https://gitlab.cbp.dhs.gov/api/v4/projects/$CI_PROJECT_ID/jobs/$JOB_ID/play"
-          echo "Gate successfully played."
-        else
-          echo "Manual gate job ID not found."
-          exit 1
-        fi
-      else
-        echo "Tests failed. Blocking auto-advance pathway."
-        exit 1  # <--- Forces the job to fail visually
-      fi
-  rules:
-    - if: '($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web") && $DEV_AUTOMATED == "true"'
-      allow_failure: true  # <--- Keeps the pipeline alive and turns the job ORANGE
+Running with gitlab-runner 18.10.1 (3b43bf9f)
+  on generic-gitlab-runner-84849b9b75-5hmhw P3YeoHxzs, system ID: r_uz3Y76Ttcay6
+  feature flags: FF_USE_ADVANCED_POD_SPEC_CONFIGURATION:true
+Resolving secrets
+Preparing the "kubernetes" executor
+00:00
+Using Kubernetes namespace: gitlab-runner
+Using Kubernetes executor with image docker.cbp.dhs.gov/cloud/ubi/python:3.11 ...
+Using attach strategy to execute scripts...
+Using effective pull policy of [Always] for container init-permissions
+Using effective pull policy of [Always] for container build
+Using effective pull policy of [Always] for container helper
+Preparing environment
+00:04
+Using FF_USE_POD_ACTIVE_DEADLINE_SECONDS, the Pod activeDeadlineSeconds will be set to the job timeout: 1h0m0s...
+WARNING: Advanced Pod Spec configuration enabled, merging the provided PodSpec to the generated one. This is a beta feature and is subject to change. Feedback is collected in this issue: https://gitlab.com/gitlab-org/gitlab-runner/-/issues/29659 ...
+Waiting for pod gitlab-runner/runner-p3yeohxzs-project-15329-concurrent-0-ogtn6sr1 to be running, status is Pending
+Running on runner-p3yeohxzs-project-15329-concurrent-0-ogtn6sr1 via generic-gitlab-runner-84849b9b75-5hmhw...
+Getting source from Git repository
+00:01
+Gitaly correlation ID: 01KXHWPKKA8XDS4E7SG6WJA7BF
+Fetching changes with git depth set to 20...
+Initialized empty Git repository in /builds/bems/becn/platform/becn-notification-mgmt-webui/.git/
+Created fresh repository.
+Checking out 9215a411 as detached HEAD (ref is manual_approval_deploy)...
+Skipping Git submodules setup
+Executing "step_script" stage of the job script
+00:01
+$ if [ "$TEST_OUTCOME" = "success" ]; then # collapsed multi-line command
+Tests passed! Marking job as GREEN. Auto-playing manual gate...
+{"message":"403 Forbidden"}Manual gate cleared automatically. Releasing deployments...
+Cleaning up project directory and file based variables
+00:01
+Job succeeded
